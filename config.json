@@ -1,0 +1,11 @@
+{
+    "data_dir": "data/yongin_data2",
+    "use_existing_index": true,
+    "chunk_strategy": "recursive",
+    "chunk_param": 800,
+    "index_type": "FLAT",
+    "ranking_mode": "rrf",
+    "llm_backend": "openai",
+    "index_file": "faiss_index.bin",
+    "chunked_file": "chunked_data.pkl"
+}
