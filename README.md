@@ -71,6 +71,8 @@ OPENAI_API_KEY=sk-abc123abc123...
 
 # 실행 방법
 
+### streamlit, 서버 두개 동시 실행!
+
 ### 1) streamlit 켜기
 
 ```bash
