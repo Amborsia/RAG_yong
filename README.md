@@ -55,10 +55,19 @@ pip install -r requirements.txt
 ```
 
 - **faiss-cpu 또는 faiss-gpu 중 하나가 설치되어 있어야 한다.**
+
   - macOS 등에서 설치가 어려울 시 Conda를 사용:
     ```bash
     conda install faiss-cpu -c conda-forge
     ```
+
+- 패키지 추가시 아래 코드를 통해 requirements 추가 혹은 수동으로 추가하면 된다.
+
+```bash
+pip install pipreqs
+pipreqs . --force
+pip freeze > requirements.txt
+```
 
 ### OpenAI API 키
 
