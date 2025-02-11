@@ -78,9 +78,6 @@ def init_rag(
         "chunk_to_doc_map": chunk_to_doc_map,
     }
 
-    with open(output_index_path, "wb") as fidx:
-        faiss.write_index(index, output_index_path)
-
     with open(output_chunk_path, "wb") as f:
         pickle.dump(db.chunked_data, f)
     print(f"chunked_data saved to {output_chunk_path}")
