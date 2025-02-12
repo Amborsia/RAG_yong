@@ -15,6 +15,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import models.database as db
 from initialize import init_rag
+from services.search import search_top_k
 
 # ✅ FAISS 인덱스 파일 경로
 INDEX_FILE = "faiss_index.bin"
@@ -118,16 +119,55 @@ warning_msg = st.empty()
 if user_input:
     chain = st.session_state["chain"]
     if chain is not None:
+        # 사용자 입력 출력
         st.chat_message("user").write(user_input)
-        # 스트리밍 방식으로 챗봇 응답 생성
-        response = chain.stream(user_input)
+
+        # --- 대화 기록과 현재 질문을 활용한 검색 쿼리 구성 (RAG) ---
+        conversation_history = ""
+        if st.session_state["messages"]:
+            # 최근 5개 메시지만 사용 (대화 내역이 길어질 때 검색 쿼리가 너무 길어지는 문제 방지)
+            recent_msgs = st.session_state["messages"][-5:]
+            for msg in recent_msgs:
+                conversation_history += f"{msg.role.capitalize()}: {msg.content}\n"
+        query_for_search = (
+            f"이전 대화 내용:\n{conversation_history}\n질문: {user_input}"
+        )
+        results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
+        if not results or len(results) == 0:
+            context_text = "❌ 관련 문서가 없습니다."
+        else:
+            answer_chunks = []
+            for r in results[:3]:  # 최대 3개의 chunk 사용
+                chunk_text = r.get("chunk_text", "내용 없음")
+                doc_url = r.get("original_doc", {}).get("url", "출처 없음")
+                enriched_chunk = (
+                    f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
+                )
+                answer_chunks.append(enriched_chunk)
+            context_text = "\n\n".join(answer_chunks)
+        # --- RAG: end ---
+
+        # --- 선택: 대화 기록(있는 경우) 별도 형식으로 구성 ---
+        conversation_section = ""
+        if conversation_history:
+            conversation_section = f"이전 대화 내용:\n{conversation_history}\n"
+        # 최종 combined_query 구성 (RAG 내용은 반드시 포함)
+        combined_query = (
+            f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
+            f"{conversation_section}"
+            f"최종 질문: {user_input}"
+        )
+
+        # 스트리밍 방식으로 챗봇 응답 생성 (combined_query 사용)
+        response = chain.stream(combined_query)
         with st.chat_message("assistant"):
             container = st.empty()
             ai_answer = ""
-            # for 루프를 통해 토큰 단위로 출력
             for token in response:
                 ai_answer += token
                 container.markdown(ai_answer)
+
+        # 대화 기록에 메시지 추가: 이전 대화 내용과 현재 질의 모두 저장
         add_message("user", user_input)
         add_message("assistant", ai_answer)
     else:
