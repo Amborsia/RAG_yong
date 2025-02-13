@@ -1,5 +1,6 @@
 # venv environment folder
 venv/
+python3.11/
 
 # logger
 execution_logs.log
@@ -14,3 +15,4 @@ execution_logs.log
 # 캐시 파일 제외
 __pycache__/
 *.pyc
+
