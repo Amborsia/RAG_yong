@@ -30,7 +30,7 @@ def summarize_conversation(history_text: str) -> str:
     """
     주어진 대화 내역을 간단하게 요약하여 반환합니다.
     """
-    llm_summary = ChatOpenAI(model_name="gpt-4o", temperature=0, streaming=False)
+    llm_summary = ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=False)
     summary_prompt = (
         f"다음 대화 내용을 간단하게 요약해줘:\n\n{history_text}\n\n간단하게 요약해줘."
     )
@@ -42,6 +42,10 @@ def summarize_conversation(history_text: str) -> str:
     else:
         summary_text = str(summary_response)
     return summary_text.strip()
+
+##############################
+## FAISS 인덱스 자동 생성 및 로드
+##############################
 
 
 # FAISS 인덱스 자동 생성 및 로드
@@ -84,6 +88,7 @@ def load_or_create_index():
             st.warning("⚠️ `chunked_data.pkl` 파일이 여전히 없습니다.")
 
 
+
 load_or_create_index()
 
 ##############################
@@ -112,7 +117,7 @@ def is_greeting(text: str) -> bool:
 
 
 # 체인 생성 (LangChain의 스트리밍 모드를 적용)
-def create_chain(model_name="gpt-4o"):
+def create_chain(model_name="gpt-4o-mini"):
     prompt = load_prompt("prompts/yongin.yaml", encoding="utf-8")
     # streaming=True 옵션을 추가하여 스트리밍 응답을 활성화합니다.
     llm = ChatOpenAI(model_name=model_name, temperature=0, streaming=True)
@@ -125,7 +130,7 @@ def rewrite_query(user_question: str) -> str:
     """
     LLM을 활용하여 사용자 질문을 바탕으로 용인시청 관련 최신 정보를 포함할 수 있는 검색 쿼리를 동적으로 재작성합니다.
     """
-    llm_rewriter = ChatOpenAI(model_name="gpt-4o", temperature=0, streaming=False)
+    llm_rewriter = ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=False)
     rewriter_prompt = (
         "다음 질문을 바탕으로 용인시청에 관련된 최신 정보를 검색하기 위한 최적의 검색 쿼리를 만들어줘. "
         "질문의 의미와 관련 키워드를 고려해서 검색 결과에 최신 소식이 잘 포함될 수 있도록 작성해줘.\n"
@@ -143,7 +148,7 @@ def rewrite_query(user_question: str) -> str:
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 if "chain" not in st.session_state:
-    chain = create_chain(model_name="gpt-4o")
+    chain = create_chain(model_name="gpt-4o-mini")
     st.session_state["chain"] = chain
 
 ## 최초 접속 시 챗봇 인사말 자동 추가 (대화가 시작되지 않은 경우)
@@ -177,7 +182,7 @@ if user_input:
         # 먼저 사용자 입력을 그대로 검색 쿼리로 사용합니다.
         query_for_search = user_input
         results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
-        # 만약 검색 결과가 없으면, 사용자 질문을 재작성한 검색 쿼리로 다시 시도합니다.
+        # 만약 검색 결과가 없으면, 사용자 질문을 재작성한 검색 쿼리로 다시 시도합니다. 
         if not results or len(results) == 0:
             with st.spinner("검색 쿼리 재작성 중입니다..."):
                 query_for_search = rewrite_query(user_input)
