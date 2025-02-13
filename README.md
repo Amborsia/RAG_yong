@@ -1,6 +1,6 @@
 # RAG (Retrieval-Augmented Generation) Project
 
-이 프로젝트는 Faiss를 사용한 문서 검색과 OpenAI GPT 모델을 결합해 질문에 답변해주는 RAG 파이프라인을 구현한다. Nest.js나 Node.js가 아닌 FastAPI와 Python을 사용하며, 문서를 여러 chunk로 나누어 검색 정확도를 높였다.
+이 프로젝트는 Faiss를 사용한 문서 검색과 OpenAI GPT 모델을 결합해 질문에 답변해주는 RAG 파이프라인을 구현한다. FastAPI와 Python을 사용하며, 문서를 여러 chunk로 나누어 검색 정확도를 높였다.
 
 ## 목차
 
