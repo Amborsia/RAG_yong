@@ -2,22 +2,22 @@ import os
 import pickle
 
 import streamlit as st
+from custom_logging import langsmith
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages.chat import ChatMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_teddynote import logging
-from langchain_teddynote.prompts import load_prompt
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import models.database as db
 from initialize import init_rag
+from prompts import load_prompt
 from services.search import search_top_k
 
-logging.langsmith("[Project] Yong-in RAG")
+langsmith(project_name="Yong-in RAG")
 
 # ✅ FAISS 인덱스 파일 경로
 INDEX_FILE = "faiss_index.bin"
@@ -120,7 +120,8 @@ def is_greeting(text: str) -> bool:
 
 # 체인 생성 (LangChain의 스트리밍 모드를 적용)
 def create_chain(model_name=MODELS["gpt-4-turbo"]):
-    prompt = load_prompt("prompts/yongin.yaml", encoding="utf-8")
+    prompt = load_prompt("prompts/yongin.yaml")
+
     # streaming=True 옵션을 추가하여 스트리밍 응답을 활성화합니다.
     llm = ChatOpenAI(model_name=model_name, temperature=0, streaming=True)
     chain = {"question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
