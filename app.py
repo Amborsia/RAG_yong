@@ -2,7 +2,6 @@ import os
 import pickle
 
 import streamlit as st
-from custom_logging import langsmith
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_community.vectorstores import FAISS
@@ -13,6 +12,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import models.database as db
+from custom_logging import langsmith
 from initialize import init_rag
 from prompts import load_prompt
 from services.search import search_top_k
@@ -123,7 +123,7 @@ def create_chain(model_name=MODELS["gpt-4-turbo"]):
     prompt = load_prompt("prompts/yongin.yaml")
 
     # streaming=True 옵션을 추가하여 스트리밍 응답을 활성화합니다.
-    llm = ChatOpenAI(model_name=model_name, temperature=0, streaming=True)
+    llm = ChatOpenAI(model_name=model_name, temperature=0.2, streaming=True)
     chain = {"question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
     return chain
 
@@ -134,7 +134,7 @@ def rewrite_query(user_question: str) -> str:
     LLM을 활용하여 사용자 질문을 바탕으로 용인시청 관련 최신 정보를 포함할 수 있는 검색 쿼리를 동적으로 재작성합니다.
     """
     llm_rewriter = ChatOpenAI(
-        model_name=MODELS["gpt-4o-mini"], temperature=0, streaming=False
+        model_name=MODELS["gpt-4o-mini"], temperature=0.3, streaming=False
     )
     rewriter_prompt = (
         "다음 질문을 바탕으로 용인시청에 관련된 최신 정보를 검색하기 위한 최적의 검색 쿼리를 만들어줘. "
