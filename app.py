@@ -79,7 +79,7 @@ if user_input:
 
             # 1차 검색: 사용자 입력 그대로 사용
             query_for_search = user_input
-            results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
+            results = search_top_k(query_for_search, top_k=3, ranking_mode="rrf")
             log_debug(f"1차 검색 쿼리 = {query_for_search}")
             log_debug(f"1차 RAG 결과 = {results}")
 
@@ -87,7 +87,7 @@ if user_input:
             if not results or len(results) == 0:
                 with st.spinner("검색 쿼리 재작성 중입니다..."):
                     query_for_search = rewrite_query(user_input)
-                results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
+                results = search_top_k(query_for_search, top_k=3, ranking_mode="rrf")
                 log_debug(f"2차 검색 쿼리 = {query_for_search}")
                 log_debug(f"2차 RAG 결과 = {results}")
 
