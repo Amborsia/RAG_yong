@@ -8,12 +8,10 @@ from utils.chat import (
     add_message,
     create_chain,
     detect_language,
-    filter_conversation,
     get_context_text,
     is_greeting,
     print_messages,
     rewrite_query,
-    summarize_conversation,
     summarize_sources,
     translate_text,
 )
@@ -21,7 +19,6 @@ from utils.logging import log_debug
 
 langsmith(project_name="Yong-in RAG")
 
-# ✅ FAISS 인덱스 파일 경로
 INDEX_FILE = "faiss_index.bin"
 CHUNKED_FILE = "chunked_data.pkl"
 DATA_DIR = "data/yongin_data2"
@@ -31,14 +28,15 @@ MODELS = {
     "gpt-4-turbo": "gpt-4-turbo",
 }
 
-
 load_or_create_index()
 
 ##############################
 ## 타이틀 및 인사말 추가
 ##############################
 st.title("용인 시청 RAG 챗봇")
-
+st.write(
+    "안녕하세요! 용인시 관련 정보를 알고 싶으시면 아래 채팅창에 질문을 입력해 주세요."
+)
 
 # 세션 초기화
 if "messages" not in st.session_state:
@@ -47,20 +45,11 @@ if "chain" not in st.session_state:
     chain = create_chain(model_name=MODELS["gpt-4o-mini"])
     st.session_state["chain"] = chain
 
-## 최초 접속 시 챗봇 인사말 자동 추가 (대화가 시작되지 않은 경우)
+# 최초 접속 시 챗봇 인사말 자동 추가
 if not st.session_state["messages"]:
     add_message("assistant", GREETING_MESSAGE)
 
-# 사이드바: 초기화 버튼과 모델 선택 메뉴
-# with st.sidebar:
-#     clear_btn = st.button("대화 초기화")
-#     selected_model = st.selectbox(
-#         "LLM 선택", MODELS.keys(), index=0
-#     )
 selected_model = MODELS["gpt-4o-mini"]
-
-# if clear_btn:
-#     st.session_state["messages"] = []
 
 print_messages()
 
@@ -71,9 +60,8 @@ warning_msg = st.empty()
 if user_input:
     chain = st.session_state["chain"]
     if chain is not None:
-        # 단순 인사말이 아닌 경우(실제 정보 요청)만 처리: is_greeting 함수가 단순 인사말만 True를 반환하도록 되어 있음
+        # 단순 인사말이면 인사말 응답 처리
         if is_greeting(user_input):
-            # 단순 인사말은 이전과 같이 처리 (정보 요청이 아니라면 인사말 응답)
             assistant_reply = (
                 "안녕하세요! 용인시청 챗봇입니다. 궁금하신 사항이 있으시면 편하게 말씀해 주세요.\n\n"
                 "예시 질문:\n"
@@ -120,24 +108,9 @@ if user_input:
                     "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
                 )
 
-            # 대화 내역 구성: 인사말, TIP, 예시 문구 등은 필터링
-            filtered_msgs = filter_conversation(st.session_state["messages"][-5:])
-            conversation_history = "\n".join(
-                [f"{msg.role.capitalize()}: {msg.content}" for msg in filtered_msgs]
-            )
-            if len(conversation_history) > 500:
-                conversation_history = summarize_conversation(conversation_history)
-            conversation_section = (
-                f"이전 대화 내용:\n{conversation_history}\n"
-                if conversation_history
-                else ""
-            )
-            log_debug(f"대화 내역 = {conversation_history}")
-
-            # 최종 쿼리 구성: 현재 질문을 우선으로 반영
+            # 이전 대화 내역은 포함하지 않고, 오직 현재 질문만을 사용합니다.
             combined_query = (
                 f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
-                f"{conversation_section}"
                 f"최종 질문: {user_input}"
             )
             log_debug(f"최종 쿼리 = {combined_query}")
@@ -161,7 +134,6 @@ if user_input:
                         spinner_placeholder.empty()
                     ai_answer += token
                     container.markdown(ai_answer)
-
             log_debug(f"최종 AI 답변 = {ai_answer}")
 
             # 대화 기록 저장
