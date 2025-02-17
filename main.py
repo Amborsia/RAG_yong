@@ -1,24 +1,23 @@
-# main.py
+import pickle
 
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
-import models.database as db
-from services.generate import generate_answer
-import pickle
-import os
 
+import models.database as db
 from initialize import init_rag  # 우리가 만든 함수
+from services.generate import generate_answer
 
 app = FastAPI()
 
+
 def initialize(
     data_dir="data/yongin_data2",
-    use_existing_index=True, # 새로 만들기 여부
+    use_existing_index=True,  # 새로 만들기 여부
     chunk_strategy="token",  # 청킹 방식
-    chunk_param=500,         # 청킹 사이즈
-    index_type="HNSW",       # 인덱스 방식
-    ranking_mode="rrf", 
+    chunk_param=500,  # 청킹 사이즈
+    index_type="HNSW",  # 인덱스 방식
+    ranking_mode="rrf",
     index_file="faiss_index.bin",
     chunked_file="chunked_data.pkl",
 ):
@@ -32,8 +31,9 @@ def initialize(
             chunk_strategy=chunk_strategy,
             chunk_param=chunk_param,
             index_type=index_type,
+            ranking_mode=ranking_mode,
             output_index_path=index_file,
-            output_chunk_path=chunked_file
+            output_chunk_path=chunked_file,
         )
     else:
         # 기존 인덱스와 chunk 정보 로딩
@@ -43,9 +43,13 @@ def initialize(
         try:
             with open(chunked_file, "rb") as f:
                 db.chunked_data = pickle.load(f)
-                print(f"chunked_data loaded from {chunked_file}, total chunks: {len(db.chunked_data['all_chunks'])}")
+                print(
+                    f"chunked_data loaded from {chunked_file}, total chunks: {len(db.chunked_data['all_chunks'])}"
+                )
         except FileNotFoundError:
-            print(f"[Warning] {chunked_file} not found. Possibly you need to run initialize.py or set use_existing_index=False.")
+            print(
+                f"[Warning] {chunked_file} not found. Possibly you need to run initialize.py or set use_existing_index=False."
+            )
         except Exception as e:
             print(f"[Error] Failed to load {chunked_file}: {e}")
 
@@ -54,17 +58,24 @@ def initialize(
         if not db.documents:
             raise ValueError("No documents loaded!")
         if not db.chunked_data:
-            print("[Warning] chunked_data is empty. Possibly you need to run initialize.py first?")
+            print(
+                "[Warning] chunked_data is empty. Possibly you need to run initialize.py first?"
+            )
 
     print("Startup complete.")
+
 
 class Query(BaseModel):
     question: str
 
+
 @app.post("/ask")
 def ask(query: Query):
-    answer = generate_answer(query.question, top_k=5, ranking_mode=ranking_mode, llm_backend=llm_backend)
+    answer = generate_answer(
+        query.question, top_k=5, ranking_mode=ranking_mode, llm_backend=llm_backend
+    )
     return {"question": query.question, "answer": answer}
+
 
 if __name__ == "__main__":
     """
@@ -77,7 +88,7 @@ if __name__ == "__main__":
     chunk_param = 800
     index_type = "FLAT"  # "FLAT" or "HNSW"
     ranking_mode = "rrf"  # "dense", "tfidf", "rrf" 중 하나
-    llm_backend = "ollama_deepseek" # "openai" or "ollama_deepseek"
+    llm_backend = "ollama_deepseek"  # "openai" or "ollama_deepseek"
     initialize(
         data_dir=data_dir,
         use_existing_index=use_existing_index,
@@ -86,7 +97,7 @@ if __name__ == "__main__":
         index_type=index_type,
         ranking_mode=ranking_mode,
         index_file="faiss_index.bin",
-        chunked_file="chunked_data.pkl"
+        chunked_file="chunked_data.pkl",
     )
 
     uvicorn.run(app, host="127.0.0.1", port=8000)

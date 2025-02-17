@@ -1,23 +1,23 @@
 # initialize.py
 
-import numpy as np
+import pickle
+
 import faiss
+import numpy as np
+
 import models.database as db
 from models.embedding import encode_texts
-from utils.chunking import (
-    token_based_chunking,
-    fixed_size_chunking,
-    recursive_chunking,
-)
-import pickle
+from utils.chunking import fixed_size_chunking, recursive_chunking, token_based_chunking
+
 
 def init_rag(
     data_dir="data/yongin_data2",
     chunk_strategy="token",
     chunk_param=500,
     index_type="HNSW",
+    ranking_mode="rrf",  # "rrf", "bm25"
     output_index_path="faiss_index.bin",
-    output_chunk_path="chunked_data.pkl"
+    output_chunk_path="chunked_data.pkl",
 ):
     """
     RAG 시스템 초기화 과정을 수행:
@@ -61,7 +61,9 @@ def init_rag(
     chunk_embeddings = encode_texts(all_chunks, batch_size=10)
     print(f"Generated {len(chunk_embeddings)} chunk embeddings.")
     if len(all_chunks) != len(chunk_embeddings):
-        print(f"[Warning] Mismatch: {len(all_chunks)} chunks, {len(chunk_embeddings)} embeddings.")
+        print(
+            f"[Warning] Mismatch: {len(all_chunks)} chunks, {len(chunk_embeddings)} embeddings."
+        )
 
     # 4) 인덱스 생성
     index = db.build_index(chunk_embeddings, index_type=index_type)
@@ -93,10 +95,12 @@ def main():
         data_dir="data/yongin_data2",
         chunk_strategy="token",  # "fixed", "recursive", "token"
         chunk_param=500,
-        index_type="HNSW",       # "FLAT" or "HNSW"
+        index_type="HNSW",  # "FLAT" or "HNSW"
+        ranking_mode="rrf",  # "rrf", "bm25"
         output_index_path="faiss_index.bin",
-        output_chunk_path="chunked_data.pkl"
+        output_chunk_path="chunked_data.pkl",
     )
+
 
 if __name__ == "__main__":
     main()
