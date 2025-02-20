@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 import models.database as db
-from initialize import init_rag  # 우리가 만든 함수
 from services.generate import generate_answer
+from services.initialize import init_rag  # 우리가 만든 함수
 
 app = FastAPI()
 

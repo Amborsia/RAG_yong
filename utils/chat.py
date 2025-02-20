@@ -4,7 +4,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
 
-from prompts import load_prompt
+from utils.prompts import load_prompt
 
 MODELS = {
     "gpt-4o-mini": "gpt-4o-mini",

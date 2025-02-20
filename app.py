@@ -1,7 +1,5 @@
 import streamlit as st
 
-from constants import GREETING_MESSAGE
-from custom_logging import langsmith
 from services.load_or_create_index import load_or_create_index
 from services.search import search_top_k
 from utils.chat import (
@@ -15,6 +13,8 @@ from utils.chat import (
     summarize_sources,
     translate_text,
 )
+from utils.constants import GREETING_MESSAGE
+from utils.custom_logging import langsmith
 from utils.logging import log_debug
 
 langsmith(project_name="Yong-in RAG")
@@ -108,19 +108,23 @@ if user_input:
                     "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
                 )
 
-            # 이전 대화 내역은 포함하지 않고, 오직 현재 질문만을 사용합니다.
-            combined_query = (
-                f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
-                f"최종 질문: {user_input}"
-            )
-            log_debug(f"최종 쿼리 = {combined_query}")
-
-            # 다국어 처리: 입력 언어 감지 후 필요 시 번역
+            # 다국어 처리: 입력 언어 감지 및 변환
             detected_lang = detect_language(user_input)
             log_debug(f"감지된 언어 = {detected_lang}")
             if detected_lang != "ko":
-                combined_query = translate_text(combined_query, detected_lang)
-                log_debug(f"번역된 최종 쿼리 = {combined_query}")
+                original_lang = detected_lang
+                # 외국어 입력은 우선 한국어로 번역하여 검색 및 응답 생성을 진행합니다.
+                translated_question = translate_text(user_input, target_language="ko")
+                log_debug(f"번역된 질문 (한국어): {translated_question}")
+            else:
+                original_lang = "ko"
+                translated_question = user_input
+
+            # 번역된 질문을 사용하여 combined query 구성 (모두 한글)
+            combined_query = (
+                f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n최종 질문: {translated_question}"
+            )
+            log_debug(f"최종 쿼리 = {combined_query}")
 
             # 스트리밍 응답 생성
             response_generator = chain.stream(combined_query)
@@ -134,10 +138,15 @@ if user_input:
                         spinner_placeholder.empty()
                     ai_answer += token
                     container.markdown(ai_answer)
-            log_debug(f"최종 AI 답변 = {ai_answer}")
+            log_debug(f"최종 AI 답변 (한국어) = {ai_answer}")
 
-            # 대화 기록 저장
+            # 최종 답변은 기본적으로 한글로 생성되므로, 원본 언어가 한글이 아니면 번역 후 저장합니다.
+            final_answer = ai_answer
+            if original_lang != "ko":
+                final_answer = translate_text(ai_answer, target_language=original_lang)
+                log_debug(f"번역된 최종 답변 = {final_answer}")
+
             add_message("user", user_input)
-            add_message("assistant", ai_answer)
+            add_message("assistant", final_answer)
     else:
         warning_msg.error("체인을 생성할 수 없습니다.")

@@ -4,7 +4,7 @@ import pickle
 import streamlit as st
 
 import models.database as db
-from initialize import init_rag
+from services.initialize import init_rag
 
 DATA_DIR = "data/yongin_data2"
 INDEX_FILE = "faiss_index.bin"
