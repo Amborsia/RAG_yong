@@ -2,6 +2,7 @@
 
 import numpy as np
 import faiss
+import os
 import models.database as db
 from models.embedding import encode_texts
 from utils.chunking import (
@@ -11,23 +12,17 @@ from utils.chunking import (
 )
 import pickle
 
+# initialize.py
+
 def init_rag(
-    data_dir="data/yongin_data2",
+    data_dir="crawling/output",  # app.py에서 DATA_DIR로 설정한 경로와 일치시킴
     chunk_strategy="token",
     chunk_param=500,
     index_type="HNSW",
-    output_index_path="faiss_index.bin",
-    output_chunk_path="chunked_data.pkl"
+    output_index_path="rag_index/index.faiss",  # app.py와 일치
+    output_chunk_path="rag_index/index.pkl"     # app.py와 일치
 ):
-    """
-    RAG 시스템 초기화 과정을 수행:
-      1) 문서 로드
-      2) 문서 → chunk 분할 (chunk_strategy에 따라)
-      3) chunk 임베딩
-      4) FAISS 인덱스 생성 (index_type에 따라)
-      5) 인덱스, chunk 정보 저장
-    """
-
+    print(f"🔍 init_rag() 호출됨! (chunk_strategy={chunk_strategy}, chunk_param={chunk_param}, index_type={index_type})")
     # 1) 문서 로드
     db.load_data(data_dir)
     if not db.documents:
@@ -38,7 +33,6 @@ def init_rag(
     all_chunks = []
     chunk_to_doc_map = []
 
-    # chunking 함수를 전략별로 매핑
     if chunk_strategy == "fixed":
         chunk_fn = lambda text: fixed_size_chunking(text, chunk_size=chunk_param)
     elif chunk_strategy == "recursive":
@@ -47,10 +41,10 @@ def init_rag(
         chunk_fn = lambda text: token_based_chunking(text, max_tokens=chunk_param)
 
     for doc_idx, doc in enumerate(db.documents):
-        content = doc.get("content", "")
-        url = doc.get("url", "")
-        combined_text = f"URL: {url}\n{content}"
-        chunks = chunk_fn(combined_text)
+        # 새 구조에서는 문서의 텍스트는 doc["text"]
+        content = doc.get("text", "")
+        # 메타데이터로 URL 등이 포함될 수 있지만, 여기서는 단순히 텍스트만 사용
+        chunks = chunk_fn(content)
         for ch in chunks:
             all_chunks.append(ch)
             chunk_to_doc_map.append(doc_idx)
@@ -70,6 +64,9 @@ def init_rag(
     print(f"FAISS index built with {index.ntotal} chunk embeddings.")
 
     # 5) 인덱스, chunk 데이터 파일로 저장
+    # 폴더 "rag_index"가 없으면 생성
+    if not os.path.exists("rag_index"):
+        os.makedirs("rag_index")
     faiss.write_index(index, output_index_path)
     print(f"FAISS index saved to {output_index_path}.")
 
@@ -81,6 +78,7 @@ def init_rag(
     with open(output_chunk_path, "wb") as f:
         pickle.dump(db.chunked_data, f)
     print(f"chunked_data saved to {output_chunk_path}")
+
 
 
 def main():
