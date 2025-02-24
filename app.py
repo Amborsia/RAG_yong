@@ -1,3 +1,4 @@
+# app.py
 import os
 import pickle
 
@@ -7,22 +8,24 @@ from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages.chat import ChatMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import Runnable, RunnablePassthrough
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_teddynote import logging
-from langchain_teddynote.prompts import load_prompt
+# 기존 langchain_teddynote 관련 임포트 제거
+# from langchain_teddynote import logging
+# from langchain_teddynote.prompts import load_prompt
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import models.database as db
 from initialize import init_rag
 from services.search import search_top_k
 
-logging.langsmith("[Project] Yong-in RAG")
+# 간단한 로깅은 기본 print()로 대체하거나, 필요시 다른 로깅 라이브러리를 사용
+print("[Project] Yong-in RAG")
 
-# ✅ FAISS 인덱스 파일 경로
-INDEX_FILE = "faiss_index.bin"
-CHUNKED_FILE = "chunked_data.pkl"
-DATA_DIR = "data/yongin_data2"
+# ★ 수정된 파일 경로 ★
+INDEX_FILE = "rag_index/index.faiss"
+CHUNKED_FILE = "rag_index/index.pkl"
+DATA_DIR = "crawling/output"
 
 
 # --- 추가: 대화 내역 요약 함수 ---
@@ -34,37 +37,37 @@ def summarize_conversation(history_text: str) -> str:
     summary_prompt = (
         f"다음 대화 내용을 간단하게 요약해줘:\n\n{history_text}\n\n간단하게 요약해줘."
     )
-    # 추천: invoke 메서드를 사용하여 호출 (또는 __call__ 결과에서 content 추출)
     summary_response = llm_summary.invoke(summary_prompt)
-    # 반환된 결과가 AIMessage 객체라면 content 속성에서 텍스트 추출
     if hasattr(summary_response, "content"):
         summary_text = summary_response.content
     else:
         summary_text = str(summary_response)
     return summary_text.strip()
 
+
 ##############################
 ## FAISS 인덱스 자동 생성 및 로드
 ##############################
 
-
-# FAISS 인덱스 자동 생성 및 로드
 def load_or_create_index():
     if os.path.exists(INDEX_FILE):
         # 문서 데이터 로드
         db.load_data(DATA_DIR)
 
-        # FAISS 인덱스 로드
+        # FAISS 인덱스 로드 (새 파일 경로 사용)
         db.load_index(INDEX_FILE, index_type="FLAT")
 
         # chunked_data 로드 (없으면 경고)
         try:
             with open(CHUNKED_FILE, "rb") as f:
-                db.chunked_data = pickle.load(f)
+                loaded_chunked = pickle.load(f)
+            # loaded_chunked가 tuple이면 첫 번째 요소를 사용합니다.
+            if isinstance(loaded_chunked, tuple):
+                db.chunked_data = loaded_chunked[0]
+            else:
+                db.chunked_data = loaded_chunked
         except FileNotFoundError:
-            st.warning(
-                "⚠️ `chunked_data.pkl` 파일이 없습니다. 일부 기능이 제한될 수 있습니다."
-            )
+            st.warning("⚠️ `chunked_data.pkl` 파일이 없습니다. 일부 기능이 제한될 수 있습니다.")
         except Exception as e:
             st.error(f"❌ `chunked_data.pkl` 로드 중 오류 발생: {e}")
     else:
@@ -82,11 +85,14 @@ def load_or_create_index():
         db.load_index(INDEX_FILE, index_type="FLAT")
         try:
             with open(CHUNKED_FILE, "rb") as f:
-                db.chunked_data = pickle.load(f)
+                loaded_chunked = pickle.load(f)
+            if isinstance(loaded_chunked, tuple):
+                db.chunked_data = loaded_chunked[0]
+            else:
+                db.chunked_data = loaded_chunked
             st.success("✅ 인덱스 및 chunked_data 로드 완료!")
         except FileNotFoundError:
             st.warning("⚠️ `chunked_data.pkl` 파일이 여전히 없습니다.")
-
 
 
 load_or_create_index()
@@ -116,12 +122,36 @@ def is_greeting(text: str) -> bool:
     return text.strip() in greetings
 
 
-# 체인 생성 (LangChain의 스트리밍 모드를 적용)
+# --- 커스텀 프롬프트 runnable 정의 ---
+# 프롬프트 템플릿 파일(prompts/yongin.yml)을 읽어서 사용자 질문을 채워 넣는 역할
+def load_prompt(file_path: str, encoding: str = "utf-8") -> str:
+    with open(file_path, encoding=encoding) as f:
+        return f.read()
+
+class RunnablePrompt(Runnable):
+    def __init__(self, prompt_template: str):
+        self.prompt_template = prompt_template
+
+    def invoke(self, input_dict: dict, config=None, **kwargs) -> str:
+        # input_dict에서 "question" 키를 가져와 템플릿에 채워 넣습니다.
+        question = input_dict.get("question", "")
+        prompt_text = self.prompt_template.format(question=question)
+        # 이제 문자열(prompt_text)만 반환합니다.
+        return prompt_text
+
+    # (추가 메서드 구현은 필요에 따라)
+
+# --- 체인 생성 ---
 def create_chain(model_name="gpt-4o-mini"):
-    prompt = load_prompt("prompts/yongin.yaml", encoding="utf-8")
+    # 프롬프트 파일 경로를 yml 확장자로 변경하여 로드
+    prompt_template = load_prompt("prompts/yongin.yaml", encoding="utf-8")
+    # 커스텀 프롬프트 runnable 생성
+    prompt_runnable = RunnablePrompt(prompt_template)
     # streaming=True 옵션을 추가하여 스트리밍 응답을 활성화합니다.
     llm = ChatOpenAI(model_name=model_name, temperature=0, streaming=True)
-    chain = {"question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
+    # 체인 구성: 초기 입력은 {"question": <사용자 질문>}를 RunnablePassthrough()로 그대로 넘기고,
+    # 그 다음 커스텀 프롬프트 runnable로 템플릿 적용, 이후 llm 호출, 마지막에 StrOutputParser()로 결과 파싱.
+    chain = {"question": RunnablePassthrough()} | prompt_runnable | llm | StrOutputParser()
     return chain
 
 
@@ -156,16 +186,8 @@ if not st.session_state["messages"]:
     greeting_msg = "안녕하세요! 용인시청 챗봇입니다. 궁금하신 사항이 있으시면 편하게 말씀해 주세요."
     add_message("assistant", greeting_msg)
 
-# 사이드바: 초기화 버튼과 모델 선택 메뉴
-# with st.sidebar:
-#     clear_btn = st.button("대화 초기화")
-#     selected_model = st.selectbox(
-#         "LLM 선택", ["gpt-4o-mini", "gpt-4-turbo", "gpt-4o"], index=0
-#     )
+# 사이드바: 초기화 버튼과 모델 선택 메뉴 (주석 처리된 부분은 필요에 따라 활성화)
 selected_model = "gpt-4o-mini"
-
-# if clear_btn:
-#     st.session_state["messages"] = []
 
 print_messages()
 
@@ -176,13 +198,12 @@ warning_msg = st.empty()
 if user_input:
     chain = st.session_state["chain"]
     if chain is not None:
-        # 사용자 입력 출력
         st.chat_message("user").write(user_input)
 
         # 먼저 사용자 입력을 그대로 검색 쿼리로 사용합니다.
         query_for_search = user_input
         results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
-        # 만약 검색 결과가 없으면, 사용자 질문을 재작성한 검색 쿼리로 다시 시도합니다. 
+        print("RESULT: ", results)
         if not results or len(results) == 0:
             with st.spinner("검색 쿼리 재작성 중입니다..."):
                 query_for_search = rewrite_query(user_input)
@@ -194,14 +215,11 @@ if user_input:
             for r in results[:3]:
                 chunk_text = r.get("chunk_text", "내용 없음")
                 doc_url = r.get("original_doc", {}).get("url", "출처 없음")
-                enriched_chunk = (
-                    f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
-                )
+                enriched_chunk = f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
                 answer_chunks.append(enriched_chunk)
             context_text = "\n\n".join(answer_chunks)
         # --- RAG: end ---
 
-        # --- 선택: 대화 기록 구성 ---
         conversation_history = ""
         if st.session_state["messages"]:
             recent_msgs = st.session_state["messages"][-5:]
@@ -212,29 +230,24 @@ if user_input:
         conversation_section = ""
         if conversation_history:
             conversation_section = f"이전 대화 내용:\n{conversation_history}\n"
-        # 최종 combined_query 구성 (RAG 내용 + 대화 맥락 + 현재 질문)
         combined_query = (
             f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
             f"{conversation_section}"
             f"최종 질문: {user_input}"
         )
 
-        # chain.stream() 호출은 별도에서 진행하고 spinner를 개별 placeholder로 처리합니다.
         response_generator = chain.stream(combined_query)
         with st.chat_message("assistant"):
             container = st.empty()
             ai_answer = ""
-            # spinner를 위한 별도 placeholder를 생성합니다.
             spinner_placeholder = st.empty()
             spinner_placeholder.markdown("**답변 생성 중입니다...**")
             for token in response_generator:
-                # 첫 토큰이 도착하면 spinner를 제거합니다.
                 if ai_answer == "":
                     spinner_placeholder.empty()
                 ai_answer += token
                 container.markdown(ai_answer)
 
-        # 대화 기록에 메시지 추가
         add_message("user", user_input)
         add_message("assistant", ai_answer)
     else:
