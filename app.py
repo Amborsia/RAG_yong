@@ -1,21 +1,14 @@
 # app.py
 import os
 import pickle
-
+import textwrap
 import streamlit as st
-from dotenv import load_dotenv
-from langchain_community.document_loaders import PDFPlumberLoader
-from langchain_community.vectorstores import FAISS
+import models.database as db
+
 from langchain_core.messages.chat import ChatMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnablePassthrough
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-# 기존 langchain_teddynote 관련 임포트 제거
-# from langchain_teddynote import logging
-# from langchain_teddynote.prompts import load_prompt
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-import models.database as db
+from langchain_openai import ChatOpenAI
 from initialize import init_rag
 from services.search import search_top_k
 
@@ -26,6 +19,23 @@ print("[Project] Yong-in RAG")
 INDEX_FILE = "rag_index/index.faiss"
 CHUNKED_FILE = "rag_index/index.pkl"
 DATA_DIR = "crawling/output"
+
+
+GREETING_MESSAGE = textwrap.dedent(
+    """\
+안녕하세요! 더 나은 삶을 위한 **스마트도시**, 용인시청 챗봇입니다.  
+
+저는 **조직도 정보**를 실시간 안내해 드리고 있어요.  
+
+📌 TIP! 이렇게 질문해 보세요!
+
+
+  - 민원 담당자 연락처 알려줘
+  - 청년 월세지원담당자 연락처 알려줘
+  - 청년 취업지원 해주는 담당자 알려줘
+"""
+)
+
 
 
 # --- 추가: 대화 내역 요약 함수 ---
@@ -183,8 +193,7 @@ if "chain" not in st.session_state:
 
 ## 최초 접속 시 챗봇 인사말 자동 추가 (대화가 시작되지 않은 경우)
 if not st.session_state["messages"]:
-    greeting_msg = "안녕하세요! 용인시청 챗봇입니다. 궁금하신 사항이 있으시면 편하게 말씀해 주세요."
-    add_message("assistant", greeting_msg)
+    add_message("assistant", GREETING_MESSAGE)
 
 # 사이드바: 초기화 버튼과 모델 선택 메뉴 (주석 처리된 부분은 필요에 따라 활성화)
 selected_model = "gpt-4o-mini"
