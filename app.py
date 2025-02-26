@@ -1,23 +1,32 @@
 # app.py
 import os
 import pickle
-
+import textwrap
 import streamlit as st
-from dotenv import load_dotenv
-from langchain_community.document_loaders import PDFPlumberLoader
-from langchain_community.vectorstores import FAISS
+import models.database as db
+
 from langchain_core.messages.chat import ChatMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnablePassthrough
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-# 기존 langchain_teddynote 관련 임포트 제거
-# from langchain_teddynote import logging
-# from langchain_teddynote.prompts import load_prompt
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import ChatOpenAI
+from services.initialize import init_rag
+import streamlit as st
 
-import models.database as db
-from initialize import init_rag
+from services.load_or_create_index import load_or_create_index
 from services.search import search_top_k
+from utils.chat import (
+    add_message,
+    create_chain,
+    detect_language,
+    get_context_text,
+    print_messages,
+    rewrite_query,
+    summarize_sources,
+    translate_text,
+)
+from utils.constants import GREETING_MESSAGE
+from utils.custom_logging import langsmith
+from utils.logging import log_debug
 
 # 간단한 로깅은 기본 print()로 대체하거나, 필요시 다른 로깅 라이브러리를 사용
 print("[Project] Yong-in RAG")
@@ -26,6 +35,23 @@ print("[Project] Yong-in RAG")
 INDEX_FILE = "rag_index/index.faiss"
 CHUNKED_FILE = "rag_index/index.pkl"
 DATA_DIR = "crawling/output"
+
+
+GREETING_MESSAGE = textwrap.dedent(
+    """\
+안녕하세요! 더 나은 삶을 위한 **스마트도시**, 용인시청 챗봇입니다.  
+
+저는 **조직도 정보**를 실시간 안내해 드리고 있어요.  
+
+📌 TIP! 이렇게 질문해 보세요!
+
+
+  - 민원 담당자 연락처 알려줘
+  - 청년 월세지원담당자 연락처 알려줘
+  - 청년 취업지원 해주는 담당자 알려줘
+"""
+)
+
 
 
 # --- 추가: 대화 내역 요약 함수 ---
@@ -101,7 +127,9 @@ load_or_create_index()
 ## 타이틀 및 인사말 추가
 ##############################
 st.title("용인 시청 RAG 챗봇")
-
+st.write(
+    "안녕하세요! 용인시 관련 정보를 알고 싶으시면 아래 채팅창에 질문을 입력해 주세요."
+)
 
 # 이전 대화 기록 출력 및 메시지 추가 함수
 def print_messages():
@@ -181,10 +209,9 @@ if "chain" not in st.session_state:
     chain = create_chain(model_name="gpt-4o-mini")
     st.session_state["chain"] = chain
 
-## 최초 접속 시 챗봇 인사말 자동 추가 (대화가 시작되지 않은 경우)
+# 최초 접속 시 챗봇 인사말 자동 추가
 if not st.session_state["messages"]:
-    greeting_msg = "안녕하세요! 용인시청 챗봇입니다. 궁금하신 사항이 있으시면 편하게 말씀해 주세요."
-    add_message("assistant", greeting_msg)
+    add_message("assistant", GREETING_MESSAGE)
 
 # 사이드바: 초기화 버튼과 모델 선택 메뉴 (주석 처리된 부분은 필요에 따라 활성화)
 selected_model = "gpt-4o-mini"
@@ -200,24 +227,41 @@ if user_input:
     if chain is not None:
         st.chat_message("user").write(user_input)
 
-        # 먼저 사용자 입력을 그대로 검색 쿼리로 사용합니다.
+        # 1차 검색: 사용자 입력 그대로 사용
         query_for_search = user_input
         results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
         print("RESULT: ", results)
         if not results or len(results) == 0:
             with st.spinner("검색 쿼리 재작성 중입니다..."):
                 query_for_search = rewrite_query(user_input)
-            results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
-        if not results or len(results) == 0:
-            context_text = "❌ 관련 문서가 없습니다."
-        else:
-            answer_chunks = []
-            for r in results[:3]:
-                chunk_text = r.get("chunk_text", "내용 없음")
-                doc_url = r.get("original_doc", {}).get("url", "출처 없음")
-                enriched_chunk = f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
-                answer_chunks.append(enriched_chunk)
-            context_text = "\n\n".join(answer_chunks)
+            results = search_top_k(query_for_search, top_k=3, ranking_mode="rrf")
+            log_debug(f"2차 검색 쿼리 = {query_for_search}")
+            log_debug(f"2차 RAG 결과 = {results}")
+
+        # RAG 결과 평가 및 fallback
+        def get_context_text(results):
+            if results and len(results) > 0:
+                summarized = summarize_sources(results)
+                if len(summarized) < 50 or "내용 없음" in summarized:
+                    return None
+                return f"📌 **출처 기반 정보**\n{summarized}"
+            return None
+
+        context_text = get_context_text(results)
+        log_debug(f"최종 context_text = {context_text}")
+        if context_text is None:
+            context_text = (
+                "📌 **AI 생성 답변**\n검색된 공식 문서가 부족합니다. 아래 답변은 자동 생성된 것입니다. "
+                "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
+            )
+
+        answer_chunks = []
+        for r in results[:3]:
+            chunk_text = r.get("chunk_text", "내용 없음")
+            doc_url = r.get("original_doc", {}).get("url", "출처 없음")
+            enriched_chunk = f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
+            answer_chunks.append(enriched_chunk)
+        context_text = "\n\n".join(answer_chunks)
         # --- RAG: end ---
 
         conversation_history = ""
@@ -247,8 +291,12 @@ if user_input:
                     spinner_placeholder.empty()
                 ai_answer += token
                 container.markdown(ai_answer)
+        log_debug(f"최종 AI 답변 (한국어) = {ai_answer}")
+
+        # 최종 답변은 기본적으로 한글로 생성되므로, 원본 언어가 한글이 아니면 번역 후 저장합니다.
+        final_answer = ai_answer
 
         add_message("user", user_input)
-        add_message("assistant", ai_answer)
+        add_message("assistant", final_answer)
     else:
         warning_msg.error("체인을 생성할 수 없습니다.")
