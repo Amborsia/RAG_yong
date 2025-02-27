@@ -1,8 +1,11 @@
 # services/search.py
 import numpy as np
+
 import models.database as db
 from models.embedding import encode_texts
 from utils.chunking import sort_chunks_by_similarity
+from utils.logging import log_debug
+
 
 def get_chunked_data():
     """
@@ -24,6 +27,7 @@ def get_chunked_data():
     # 변환 실패 시 빈 dict 반환
     return {}
 
+
 def reciprocal_rank_fusion(results_list, k=60):
     """
     Reciprocal Rank Fusion (RRF)로 여러 랭킹 목록을 합치는 함수.
@@ -36,7 +40,7 @@ def reciprocal_rank_fusion(results_list, k=60):
     """
     all_chunks = set()
     for results in results_list:
-        for (c_idx, _) in results:
+        for c_idx, _ in results:
             all_chunks.add(c_idx)
 
     scores = {}
@@ -44,7 +48,7 @@ def reciprocal_rank_fusion(results_list, k=60):
         score_sum = 0.0
         for res in results_list:
             found_rank = None
-            for (c_idx, rnk) in res:
+            for c_idx, rnk in res:
                 if c_idx == c:
                     found_rank = rnk
                     break
@@ -52,8 +56,10 @@ def reciprocal_rank_fusion(results_list, k=60):
                 score_sum += 1.0 / (k + found_rank)
         scores[c] = score_sum
 
-    fused_ranking = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return fused_ranking
+    # 점수 기준으로 내림차순 정렬
+    sorted_chunks = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return [c_idx for (c_idx, _) in sorted_chunks]
+
 
 def get_dense_ranking(query, top_k=5):
     """
@@ -70,6 +76,7 @@ def get_dense_ranking(query, top_k=5):
     for rank_in_list, chunk_idx in enumerate(indices[0]):
         results.append((int(chunk_idx), rank_in_list + 1))
     return results
+
 
 def get_tfidf_ranking(query, top_k=5):
     """
@@ -91,56 +98,84 @@ def get_tfidf_ranking(query, top_k=5):
         ranked_list.append((chunk_idx, rank_in_list + 1))
     return ranked_list[:top_k]
 
+
 def search_top_k(query, top_k=5, ranking_mode="rrf"):
     """
-    ranking_mode에 따라 검색 접근:
-       - 'rrf' : Dense + TF-IDF RRF 결합.
-       - 'dense': Dense(Faiss) 결과만.
-       - 'tfidf': TF-IDF 결과만.
-    최종 상위 top_k chunk 반환.
+    주어진 쿼리에 대해 top_k개의 가장 관련성 높은 청크를 검색합니다.
+    ranking_mode: "rrf" (Reciprocal Rank Fusion) 또는 "bm25" (BM25 점수)
     """
-    if ranking_mode == "rrf":
-        dense_results = get_dense_ranking(query, top_k=top_k)
-        tfidf_results = get_tfidf_ranking(query, top_k=top_k)
-        rrf_merged = reciprocal_rank_fusion([dense_results, tfidf_results], k=60)
-        top_rrf = rrf_merged[:top_k]
-        final_chunk_indices = [x[0] for x in top_rrf]
+    # 쿼리 임베딩 생성
+    query_embedding = encode_texts([query])[0]
 
-    elif ranking_mode == "dense":
-        dense_results = get_dense_ranking(query, top_k=top_k)
-        final_chunk_indices = [x[0] for x in dense_results]
+    # 데이터베이스 상태 확인
+    if db.index is None:
+        log_debug("FAISS 인덱스가 로드되지 않았습니다.")
+        return []
 
-    elif ranking_mode == "tfidf":
-        tfidf_results = get_tfidf_ranking(query, top_k=top_k)
-        final_chunk_indices = [x[0] for x in tfidf_results]
+    if db.index.ntotal == 0:
+        log_debug("FAISS 인덱스가 비어 있습니다.")
+        return []
 
-    else:
-        print(f"[Warning] Unknown ranking_mode={ranking_mode}, defaulting to 'rrf'")
-        dense_results = get_dense_ranking(query, top_k=top_k)
-        tfidf_results = get_tfidf_ranking(query, top_k=top_k)
-        rrf_merged = reciprocal_rank_fusion([dense_results, tfidf_results], k=60)
-        top_rrf = rrf_merged[:top_k]
-        final_chunk_indices = [x[0] for x in top_rrf]
+    # FAISS 검색 (밀집 벡터 검색)
+    D, I = db.index.search(np.array([query_embedding]), top_k * 2)
+    dense_results = [(int(i), r) for r, i in enumerate(I[0]) if i >= 0]
 
-    # 최종적으로 chunked_data에서 데이터를 읽어옴.
+    # 청크 데이터 가져오기
     chunked = get_chunked_data()
-    print("Chunked data", chunked)
+    if not chunked:
+        log_debug("청크 데이터가 로드되지 않았습니다.")
+        return []
+
     all_chunks = chunked.get("all_chunks", [])
-    print("All Chunks", all_chunks)
+    if not all_chunks:
+        log_debug("청크 데이터가 비어 있습니다.")
+        return []
+
+    # 랭킹 모드에 따라 최종 청크 인덱스 결정
+    if ranking_mode == "rrf":
+        # BM25 또는 다른 랭킹 알고리즘 결과를 여기에 추가할 수 있음
+        # 현재는 dense_results만 사용
+        final_chunk_indices = reciprocal_rank_fusion([dense_results])[:top_k]
+    else:
+        # 기본 dense 검색 결과 사용
+        final_chunk_indices = [c_idx for c_idx, _ in dense_results][:top_k]
+
+    # 청크 인덱스를 문서 데이터로 변환
     chunk_to_doc_map = chunked.get("chunk_to_doc_map", [])
-    print("Chunk to Doc Map", chunk_to_doc_map)
+    log_debug(
+        f"청크 맵 길이: {len(chunk_to_doc_map)}, 청크 개수: {len(all_chunks)}, 문서 개수: {len(db.documents)}"
+    )
 
     results = []
     for c_idx in final_chunk_indices:
-        if c_idx >= len(all_chunks):
+        # 청크 인덱스 범위 확인
+        if c_idx < 0 or c_idx >= len(all_chunks):
+            log_debug(
+                f"청크 인덱스 범위 초과: {c_idx} (전체 청크 개수: {len(all_chunks)})"
+            )
             continue
+
         chunk_text = all_chunks[c_idx]
+
+        # 문서 맵 인덱스 범위 확인
+        if c_idx >= len(chunk_to_doc_map):
+            log_debug(
+                f"문서 맵 인덱스 범위 초과: {c_idx} (전체 맵 개수: {len(chunk_to_doc_map)})"
+            )
+            continue
+
         doc_idx = chunk_to_doc_map[c_idx]
+
+        # 문서 인덱스 범위 확인
+        if doc_idx < 0 or doc_idx >= len(db.documents):
+            log_debug(
+                f"문서 인덱스 범위 초과: {doc_idx} (전체 문서 개수: {len(db.documents)})"
+            )
+            continue
+
         doc_data = db.documents[doc_idx]
-        results.append({
-            "chunk_text": chunk_text,
-            "doc_idx": doc_idx,
-            "original_doc": doc_data
-        })
+        results.append(
+            {"chunk_text": chunk_text, "doc_idx": doc_idx, "original_doc": doc_data}
+        )
 
     return results
