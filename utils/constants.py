@@ -1,8 +1,8 @@
 # constants.py
 import textwrap
 
-GREETING_MESSAGE = textwrap.dedent(
-    """\
+# 기본 메시지
+BASE = """\
 안녕하세요! 더 나은 삶을 위한 **스마트도시**, 용인시청 챗봇입니다.  
 
 저는 **홈페이지 기반 구정 정보, 주요 행사 등**을 실시간 안내해 드리고 있어요.  
@@ -17,6 +17,22 @@ GREETING_MESSAGE = textwrap.dedent(
   - 여권발급 필요서류 및 발급기간은?
   - 용인시청은 어떻게 갈 수 있어?
   - 무인 민원 발급 방법은?
-  - 무료 주차장은 어디에 있어?
+  - 전봇대가 무너졌어. 어디에 연락해야돼?
 """
-)
+
+# 조직도 메시지
+CONTACT = """\
+안녕하세요! 더 나은 삶을 위한 **스마트도시**, 용인시청 챗봇입니다.  
+
+저는 **조직도 정보**를 실시간 안내해 드리고 있어요.  
+
+📌 TIP! 이렇게 질문해 보세요!
+
+
+  - 민원 담당자 연락처 알려줘
+  - 청년 월세지원담당자 연락처 알려줘
+  - 법무 관련 담당자 정보
+  - 정책기획 관련 담당자 정보
+"""
+
+GREETING_MESSAGE = {"base": textwrap.dedent(BASE), "contact": textwrap.dedent(CONTACT)}
