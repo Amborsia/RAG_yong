@@ -13,21 +13,73 @@ import models.database as db
 from services.initialize import init_rag
 from services.load_or_create_index import load_or_create_index
 from services.search import search_top_k
-from utils.chat import (
-    add_message,
-    create_chain,
-    detect_language,
-    get_context_text,
-    print_messages,
-    rewrite_query,
-    summarize_sources,
-    translate_text,
-)
+from utils.chat import (add_message, create_chain, detect_language,
+                        get_context_text, print_messages, rewrite_query,
+                        summarize_sources, translate_text)
 from utils.constants import GREETING_MESSAGE
 from utils.custom_logging import langsmith
 from utils.logging import log_debug
 
 langsmith(project_name="Yong-in RAG")
+
+# 채팅 입력창 높이 조정을 위한 CSS 추가
+st.markdown("""
+<style>
+.stMain {
+    position: relative;
+}
+.stChatMessage {
+    background-color: transparent !important;
+}
+[data-testid=stSidebar] {
+    background-color: #3d9df3;
+    padding:0 15px;
+}
+
+[data-testid=stSidebarUserContent] {
+    background-color: white;
+    border-radius: 10px;
+}
+
+/* 채팅 입력창 높이 조정 - 새로운 클래스명 사용 */
+.st-emotion-cache-glsyku {
+    min-height: 80px !important;
+    align-items: center;
+}
+.st-emotion-cache-glsyku textarea:active{
+    outline: none;
+}
+.st-emotion-cache-glsyku div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+[data-testid="stChatMessage"]:has(> [data-testid="stChatMessageAvatarUser"]) {
+    justify-content: flex-end !important;
+    display: flex !important;
+}
+[data-testid="stChatMessage"]:has(> [data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
+    text-align: right !important;
+    background-color: #3399FF !important;
+    color: #FFFFFF !important;
+    border-radius: 10px !important;
+    padding: 10px !important;
+    margin: 5px 0 !important;
+    max-width: 80% !important;
+    flex-grow: 0 !important;
+}
+[data-baseweb="textarea"] {
+    border-color: transparent !important;
+}
+/* 채팅 입력창 높이 조정 */
+/*
+.st-emotion-cache-qcqlej {
+    height: 0 !important;
+    flex-grow: 0 !important;
+}
+*/
+""", unsafe_allow_html=True)
 
 # RAG 모드 설정
 RAG_MODES = {
@@ -156,7 +208,9 @@ def load_or_create_index(mode="base"):
 ##############################
 ## 타이틀 및 인사말 추가
 ##############################
-st.title("용인 시청 RAG 챗봇")
+# 타이틀은 사이드바에만 표시
+with st.sidebar:
+    st.title("용인 시청 RAG 챗봇")
 
 # 사이드바: 모드 선택 및 초기화 버튼
 with st.sidebar:
@@ -165,6 +219,10 @@ with st.sidebar:
     # 세션 상태에 모드 저장
     if "rag_mode" not in st.session_state:
         st.session_state["rag_mode"] = "base"
+        
+    # 대화 시작 여부 추적
+    if "conversation_started" not in st.session_state:
+        st.session_state["conversation_started"] = False
 
     # 모드 선택 라디오 버튼
     selected_mode = st.radio(
@@ -217,7 +275,6 @@ def print_messages():
 
 def add_message(role, message):
     st.session_state["messages"].append(ChatMessage(role=role, content=message))
-
 
 def is_greeting(text: str) -> bool:
     """
@@ -299,8 +356,7 @@ if not st.session_state["messages"]:
     add_message("assistant", GREETING_MESSAGE[current_mode])
 
 print_messages()
-
-# 사용자 입력 처리 (챗 입력)
+# 채팅 입력창 추가
 user_input = st.chat_input("궁금한 내용을 물어보세요!")
 warning_msg = st.empty()
 
@@ -359,15 +415,17 @@ if user_input:
         # --- RAG: end ---
 
         conversation_history = ""
-        if st.session_state["messages"]:
-            recent_msgs = st.session_state["messages"][-5:]
+        if len(st.session_state["messages"]) > 1:  # 방금 추가한 사용자 메시지 제외
+            recent_msgs = st.session_state["messages"][-5:]  # 최근 5개 메시지
             for msg in recent_msgs:
                 conversation_history += f"{msg.role.capitalize()}: {msg.content}\n"
             if len(conversation_history) > 500:
                 conversation_history = summarize_conversation(conversation_history)
+        
         conversation_section = ""
         if conversation_history:
             conversation_section = f"이전 대화 내용:\n{conversation_history}\n"
+        
         combined_query = (
             f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
             f"{conversation_section}"
@@ -394,3 +452,4 @@ if user_input:
         add_message("assistant", final_answer)
     else:
         warning_msg.error("체인을 생성할 수 없습니다.")
+
