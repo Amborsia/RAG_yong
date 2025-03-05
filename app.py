@@ -99,6 +99,26 @@ RAG_MODES = {
         "data_dir": "crawling/output",
         "prompt_file": "prompts/yongin_contact.yaml",
     },
+    "article": {
+        "name": "기사 작성 모드",
+        "description": "기사를 작성합니다.",
+        "prompt_file": "prompts/yongin_article.yaml",
+    },
+    "research": {  # 🆕 이력서 작성 모드 추가
+        "name": "연구과제작성 모드",
+        "description": "연구과제를 작성합니다.",
+        "prompt_file": "prompts/yongin_research.yaml",
+    },
+    "policy": {  # 🆕 이메일 작성 모드 추가
+        "name": "정책보고서 모드",
+        "description": "정책보고서를 작성합니다.",
+        "prompt_file": "prompts/yongin_policy.yaml",
+    },
+    "event_doc": {  # 🆕 제안서 작성 모드 추가
+        "name": "행사보고서 모드",
+        "description": "행사 보고서를 작성합니다.",
+        "prompt_file": "prompts/yongin_event_doc.yaml",
+    },
 }
 
 # 전역 변수 제거 (모드별 설정으로 대체)
@@ -148,38 +168,39 @@ def load_or_create_index(mode="base"):
     reset_db_state()
 
     mode_config = RAG_MODES[mode]
-    INDEX_FILE = mode_config["index_file"]
-    CHUNKED_FILE = mode_config["chunked_file"]
-    DATA_DIR = mode_config["data_dir"]
+
+    # 📌 "doc" 모드는 RAG를 사용하지 않으므로 인덱스를 로드할 필요 없음
+    if mode in ["article", "research", "policy", "event_doc"]:
+        log_debug("📌 'doc' 모드에서는 FAISS 인덱스를 로드하지 않습니다.")
+        return  
+
+    # 일반적인 RAG 모드 처리
+    INDEX_FILE = mode_config.get("index_file", None)
+    CHUNKED_FILE = mode_config.get("chunked_file", None)
+    DATA_DIR = mode_config.get("data_dir", None)
+
+    if not INDEX_FILE or not CHUNKED_FILE or not DATA_DIR:
+        log_debug(f"❌ {mode} 모드에서 필요한 파일 설정이 없습니다.")
+        return
 
     if os.path.exists(INDEX_FILE):
-        # 문서 데이터 로드
         db.load_data(DATA_DIR)
-
-        # FAISS 인덱스 로드
         db.load_index(INDEX_FILE, index_type="FLAT")
 
-        # chunked_data 로드 (없으면 경고)
         try:
             with open(CHUNKED_FILE, "rb") as f:
                 loaded_chunked = pickle.load(f)
-            # loaded_chunked가 tuple이면 첫 번째 요소를 사용합니다.
-            if isinstance(loaded_chunked, tuple):
-                db.chunked_data = loaded_chunked[0]
-            else:
-                db.chunked_data = loaded_chunked
+            db.chunked_data = loaded_chunked[0] if isinstance(loaded_chunked, tuple) else loaded_chunked
 
-            # 디버깅 정보 출력
             log_debug(f"문서 개수: {len(db.documents)}")
             log_debug(f"청크 개수: {len(db.chunked_data.get('all_chunks', []))}")
             log_debug(f"인덱스 크기: {db.index.ntotal if db.index else 0}")
 
         except FileNotFoundError:
-            st.warning(
-                f"⚠️ `{CHUNKED_FILE}` 파일이 없습니다. 일부 기능이 제한될 수 있습니다."
-            )
+            st.warning(f"⚠️ `{CHUNKED_FILE}` 파일이 없습니다.")
         except Exception as e:
             st.error(f"❌ `{CHUNKED_FILE}` 로드 중 오류 발생: {e}")
+
     else:
         st.write(f"🔄 FAISS 인덱스({INDEX_FILE})가 없습니다. 새로 생성 중...")
         init_rag(
@@ -193,13 +214,11 @@ def load_or_create_index(mode="base"):
         st.success("✅ 새로운 FAISS 인덱스 생성 완료!")
         db.load_data(DATA_DIR)
         db.load_index(INDEX_FILE, index_type="FLAT")
+
         try:
             with open(CHUNKED_FILE, "rb") as f:
                 loaded_chunked = pickle.load(f)
-            if isinstance(loaded_chunked, tuple):
-                db.chunked_data = loaded_chunked[0]
-            else:
-                db.chunked_data = loaded_chunked
+            db.chunked_data = loaded_chunked[0] if isinstance(loaded_chunked, tuple) else loaded_chunked
             st.success("✅ 인덱스 및 chunked_data 로드 완료!")
         except FileNotFoundError:
             st.warning(f"⚠️ `{CHUNKED_FILE}` 파일이 여전히 없습니다.")
@@ -310,6 +329,7 @@ class RunnablePrompt(Runnable):
 def create_chain(model_name="gpt-4o", mode="base"):
     # 현재 모드에 맞는 프롬프트 파일 로드
     prompt_file = RAG_MODES[mode]["prompt_file"]
+    print(prompt_file)
     prompt_template = load_prompt(prompt_file, encoding="utf-8")
     # 커스텀 프롬프트 runnable 생성
     prompt_runnable = RunnablePrompt(prompt_template)
@@ -361,95 +381,124 @@ user_input = st.chat_input("궁금한 내용을 물어보세요!")
 warning_msg = st.empty()
 
 if user_input:
-    chain = st.session_state["chain"]
-    if chain is not None:
+
+    if st.session_state["rag_mode"] in ["article", "research", "policy", "event_doc"]:
         st.chat_message("user").write(user_input)
+        # ✅ "doc" 모드에서도 프롬프트를 적용
+        prompt_file = RAG_MODES[st.session_state["rag_mode"]]["prompt_file"]
+        prompt_template = load_prompt(prompt_file, encoding="utf-8")
 
-        # 안전한 검색 처리
-        try:
-            # 1차 검색: 사용자 입력 그대로 사용
-            query_for_search = user_input
-            results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
-            log_debug(f"1차 검색 결과 개수: {len(results)}")
+        # ✅ 사용자 입력을 프롬프트에 적용 (question 변수로 전달)
+        formatted_query = prompt_template.format(question=user_input)
 
-            if not results or len(results) == 0:
-                with st.spinner("검색 쿼리 재작성 중입니다..."):
-                    query_for_search = rewrite_query(user_input)
-                results = search_top_k(query_for_search, top_k=3, ranking_mode="rrf")
-                log_debug(f"2차 검색 쿼리 = {query_for_search}")
-                log_debug(f"2차 검색 결과 개수: {len(results)}")
-        except Exception as e:
-            log_debug(f"검색 중 오류 발생: {str(e)}")
-            results = []
-            st.error(f"검색 중 오류가 발생했습니다: {str(e)}")
+        # ✅ GPT 호출 (gpt-4o 사용)
+        llm = ChatOpenAI(model_name="gpt-4o", temperature=0, streaming=True)
+        response_generator = llm.stream(formatted_query)
 
-        # RAG 결과 평가 및 fallback
-        def get_context_text(results):
-            if results and len(results) > 0:
-                summarized = summarize_sources(results)
-                if len(summarized) < 50 or "내용 없음" in summarized:
-                    return None
-                return f"📌 **출처 기반 정보**\n{summarized}"
-            return None
-
-        # 검색 결과가 있는 경우에만 처리
-        if results and len(results) > 0:
-            context_text = get_context_text(results)
-            log_debug(f"최종 context_text = {context_text}")
-
-            answer_chunks = []
-            for r in results[:3]:
-                chunk_text = r.get("chunk_text", "내용 없음")
-                doc_url = r.get("original_doc", {}).get("url", "출처 없음")
-                enriched_chunk = (
-                    f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
-                )
-                answer_chunks.append(enriched_chunk)
-            context_text = "\n\n".join(answer_chunks)
-        else:
-            # 검색 결과가 없는 경우 기본 메시지 사용
-            context_text = (
-                "📌 **AI 생성 답변**\n검색된 공식 문서가 부족합니다. 아래 답변은 자동 생성된 것입니다. "
-                "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
-            )
-        # --- RAG: end ---
-
-        conversation_history = ""
-        if len(st.session_state["messages"]) > 1:  # 방금 추가한 사용자 메시지 제외
-            recent_msgs = st.session_state["messages"][-5:]  # 최근 5개 메시지
-            for msg in recent_msgs:
-                conversation_history += f"{msg.role.capitalize()}: {msg.content}\n"
-            if len(conversation_history) > 500:
-                conversation_history = summarize_conversation(conversation_history)
-        
-        conversation_section = ""
-        if conversation_history:
-            conversation_section = f"이전 대화 내용:\n{conversation_history}\n"
-        
-        combined_query = (
-            f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
-            f"{conversation_section}"
-            f"최종 질문: {user_input}"
-        )
-
-        response_generator = chain.stream(combined_query)
         with st.chat_message("assistant"):
             container = st.empty()
             ai_answer = ""
             spinner_placeholder = st.empty()
             spinner_placeholder.markdown("**답변 생성 중입니다...**")
+
             for token in response_generator:
+                if hasattr(token, "content"):  # ✅ AIMessageChunk 객체일 경우
+                    token_text = token.content
+                else:
+                    token_text = str(token)  # ✅ 문자열 변환
+
                 if ai_answer == "":
                     spinner_placeholder.empty()
-                ai_answer += token
+                
+                ai_answer += token_text
                 container.markdown(ai_answer)
-        log_debug(f"최종 AI 답변 (한국어) = {ai_answer}")
 
-        # 최종 답변은 기본적으로 한글로 생성되므로, 원본 언어가 한글이 아니면 번역 후 저장합니다.
-        final_answer = ai_answer
+        log_debug(f"최종 AI 답변 (doc 모드) = {ai_answer}")
 
         add_message("user", user_input)
-        add_message("assistant", final_answer)
-    else:
-        warning_msg.error("체인을 생성할 수 없습니다.")
+        add_message("assistant", ai_answer)
 
+    else:
+        # ✅ "doc" 모드가 아닌 경우, 기존 RAG 검색 수행
+        chain = st.session_state["chain"]
+        if chain is not None:
+            st.chat_message("user").write(user_input)
+            try:
+                query_for_search = user_input
+                results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
+                log_debug(f"1차 검색 결과 개수: {len(results)}")
+
+                if not results:
+                    with st.spinner("검색 쿼리 재작성 중입니다..."):
+                        query_for_search = rewrite_query(user_input)
+                    results = search_top_k(query_for_search, top_k=3, ranking_mode="rrf")
+                    log_debug(f"2차 검색 결과 개수: {len(results)}")
+            except Exception as e:
+                log_debug(f"검색 중 오류 발생: {str(e)}")
+                results = []
+                st.error(f"검색 중 오류가 발생했습니다: {str(e)}")
+
+            # RAG 결과 평가 및 fallback
+            def get_context_text(results):
+                if results and len(results) > 0:
+                    summarized = summarize_sources(results)
+                    if len(summarized) < 50 or "내용 없음" in summarized:
+                        return None
+                    return f"📌 **출처 기반 정보**\n{summarized}"
+                return None
+
+            # 검색 결과가 있는 경우에만 처리
+            if results and len(results) > 0:
+                context_text = get_context_text(results)
+                log_debug(f"최종 context_text = {context_text}")
+
+                answer_chunks = []
+                for r in results[:3]:
+                    chunk_text = r.get("chunk_text", "내용 없음")
+                    doc_url = r.get("original_doc", {}).get("url", "출처 없음")
+                    enriched_chunk = (
+                        f"이 chunk는 {doc_url} 에서 가져온 내용입니다.\n{chunk_text}"
+                    )
+                    answer_chunks.append(enriched_chunk)
+                context_text = "\n\n".join(answer_chunks)
+            else:
+                # 검색 결과가 없는 경우 기본 메시지 사용
+                context_text = (
+                    get_context_text(results) if results else
+                    "📌 **AI 생성 답변**\n검색된 공식 문서가 부족합니다. 아래 답변은 자동 생성된 것입니다. "
+                    "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
+                )
+
+            conversation_history = ""
+            if len(st.session_state["messages"]) > 1:
+                recent_msgs = st.session_state["messages"][-5:]
+                for msg in recent_msgs:
+                    conversation_history += f"{msg.role.capitalize()}: {msg.content}\n"
+                if len(conversation_history) > 500:
+                    conversation_history = summarize_conversation(conversation_history)
+
+            conversation_section = f"이전 대화 내용:\n{conversation_history}\n" if conversation_history else ""
+            combined_query = (
+                f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
+                f"{conversation_section}최종 질문: {user_input}"
+            )
+
+            response_generator = chain.stream(combined_query)
+            with st.chat_message("assistant"):
+                container = st.empty()
+                ai_answer = ""
+                spinner_placeholder = st.empty()
+                spinner_placeholder.markdown("**답변 생성 중입니다...**")
+                for token in response_generator:
+                    if ai_answer == "":
+                        spinner_placeholder.empty()
+                    ai_answer += token
+                    container.markdown(ai_answer)
+
+            log_debug(f"최종 AI 답변 (한국어) = {ai_answer}")
+
+            add_message("user", user_input)
+            add_message("assistant", ai_answer)
+
+        else:
+            st.error("체인을 생성할 수 없습니다.")
