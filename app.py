@@ -247,7 +247,7 @@ with st.sidebar:
     selected_mode = st.radio(
         "모드 선택",
         options=list(RAG_MODES.keys()),
-        format_func=lambda x: f"{RAG_MODES[x]['name']} - {RAG_MODES[x]['description']}",
+        format_func=lambda x: f"{RAG_MODES[x]['name']}",
         index=list(RAG_MODES.keys()).index(st.session_state["rag_mode"]),
     )
 
