@@ -1,7 +1,6 @@
 # app.py
 import os
 import pickle
-import textwrap
 
 import streamlit as st
 from langchain_core.messages.chat import ChatMessage
@@ -13,17 +12,23 @@ import models.database as db
 from services.initialize import init_rag
 from services.load_or_create_index import load_or_create_index
 from services.search import search_top_k
-from utils.chat import (add_message, create_chain, detect_language,
-                        get_context_text, print_messages, rewrite_query,
-                        summarize_sources, translate_text)
-from utils.constants import GREETING_MESSAGE
+from utils.chat import (
+    add_message,
+    create_chain,
+    get_context_text,
+    print_messages,
+    rewrite_query,
+    summarize_sources,
+)
 from utils.custom_logging import langsmith
+from utils.greeting_message import GREETING_MESSAGE
 from utils.logging import log_debug
 
 langsmith(project_name="Yong-in RAG")
 
 # 채팅 입력창 높이 조정을 위한 CSS 추가
-st.markdown("""
+st.markdown(
+    """
 <style>
 .stMain {
     position: relative;
@@ -79,7 +84,9 @@ st.markdown("""
     flex-grow: 0 !important;
 }
 */
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # RAG 모드 설정
 RAG_MODES = {
@@ -172,7 +179,7 @@ def load_or_create_index(mode="base"):
     # 📌 "doc" 모드는 RAG를 사용하지 않으므로 인덱스를 로드할 필요 없음
     if mode in ["article", "research", "policy", "event_doc"]:
         log_debug("📌 'doc' 모드에서는 FAISS 인덱스를 로드하지 않습니다.")
-        return  
+        return
 
     # 일반적인 RAG 모드 처리
     INDEX_FILE = mode_config.get("index_file", None)
@@ -190,7 +197,11 @@ def load_or_create_index(mode="base"):
         try:
             with open(CHUNKED_FILE, "rb") as f:
                 loaded_chunked = pickle.load(f)
-            db.chunked_data = loaded_chunked[0] if isinstance(loaded_chunked, tuple) else loaded_chunked
+            db.chunked_data = (
+                loaded_chunked[0]
+                if isinstance(loaded_chunked, tuple)
+                else loaded_chunked
+            )
 
             log_debug(f"문서 개수: {len(db.documents)}")
             log_debug(f"청크 개수: {len(db.chunked_data.get('all_chunks', []))}")
@@ -218,7 +229,11 @@ def load_or_create_index(mode="base"):
         try:
             with open(CHUNKED_FILE, "rb") as f:
                 loaded_chunked = pickle.load(f)
-            db.chunked_data = loaded_chunked[0] if isinstance(loaded_chunked, tuple) else loaded_chunked
+            db.chunked_data = (
+                loaded_chunked[0]
+                if isinstance(loaded_chunked, tuple)
+                else loaded_chunked
+            )
             st.success("✅ 인덱스 및 chunked_data 로드 완료!")
         except FileNotFoundError:
             st.warning(f"⚠️ `{CHUNKED_FILE}` 파일이 여전히 없습니다.")
@@ -238,7 +253,7 @@ with st.sidebar:
     # 세션 상태에 모드 저장
     if "rag_mode" not in st.session_state:
         st.session_state["rag_mode"] = "base"
-        
+
     # 대화 시작 여부 추적
     if "conversation_started" not in st.session_state:
         st.session_state["conversation_started"] = False
@@ -294,6 +309,7 @@ def print_messages():
 
 def add_message(role, message):
     st.session_state["messages"].append(ChatMessage(role=role, content=message))
+
 
 def is_greeting(text: str) -> bool:
     """
@@ -409,7 +425,7 @@ if user_input:
 
                 if ai_answer == "":
                     spinner_placeholder.empty()
-                
+
                 ai_answer += token_text
                 container.markdown(ai_answer)
 
@@ -431,7 +447,9 @@ if user_input:
                 if not results:
                     with st.spinner("검색 쿼리 재작성 중입니다..."):
                         query_for_search = rewrite_query(user_input)
-                    results = search_top_k(query_for_search, top_k=3, ranking_mode="rrf")
+                    results = search_top_k(
+                        query_for_search, top_k=3, ranking_mode="rrf"
+                    )
                     log_debug(f"2차 검색 결과 개수: {len(results)}")
             except Exception as e:
                 log_debug(f"검색 중 오류 발생: {str(e)}")
@@ -464,8 +482,9 @@ if user_input:
             else:
                 # 검색 결과가 없는 경우 기본 메시지 사용
                 context_text = (
-                    get_context_text(results) if results else
-                    "📌 **AI 생성 답변**\n검색된 공식 문서가 부족합니다. 아래 답변은 자동 생성된 것입니다. "
+                    get_context_text(results)
+                    if results
+                    else "📌 **AI 생성 답변**\n검색된 공식 문서가 부족합니다. 아래 답변은 자동 생성된 것입니다. "
                     "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
                 )
 
@@ -477,7 +496,11 @@ if user_input:
                 if len(conversation_history) > 500:
                     conversation_history = summarize_conversation(conversation_history)
 
-            conversation_section = f"이전 대화 내용:\n{conversation_history}\n" if conversation_history else ""
+            conversation_section = (
+                f"이전 대화 내용:\n{conversation_history}\n"
+                if conversation_history
+                else ""
+            )
             combined_query = (
                 f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
                 f"{conversation_section}최종 질문: {user_input}"
