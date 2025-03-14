@@ -281,21 +281,18 @@ with st.sidebar:
         # 페이지 새로고침 (모드 변경 적용을 위해)
         st.rerun()
 
-    # 모델 선택 (주석 처리된 부분은 필요에 따라 활성화)
-    selected_model = "gpt-4o-mini"
-
     # 디버그 정보 표시
-    with st.expander("디버그 정보"):
-        st.write(f"현재 모드: {st.session_state['rag_mode']}")
-        st.write(f"문서 개수: {len(db.documents)}")
-        st.write(f"청크 개수: {len(db.chunked_data.get('all_chunks', []))}")
-        st.write(f"인덱스 크기: {db.index.ntotal if db.index else 0}")
+    # with st.expander("디버그 정보"):
+    #     st.write(f"현재 모드: {st.session_state['rag_mode']}")
+    #     st.write(f"문서 개수: {len(db.documents)}")
+    #     st.write(f"청크 개수: {len(db.chunked_data.get('all_chunks', []))}")
+    #     st.write(f"인덱스 크기: {db.index.ntotal if db.index else 0}")
 
-        if st.button("데이터 다시 로드"):
-            reset_db_state()
-            load_or_create_index(st.session_state["rag_mode"])
-            st.success("✅ 데이터 다시 로드 완료!")
-            st.rerun()
+    #     if st.button("데이터 다시 로드"):
+    #         reset_db_state()
+    #         load_or_create_index(st.session_state["rag_mode"])
+    #         st.success("✅ 데이터 다시 로드 완료!")
+    #         st.rerun()
 
 # 현재 모드로 인덱스 로드
 load_or_create_index(st.session_state["rag_mode"])
@@ -311,13 +308,13 @@ def add_message(role, message):
     st.session_state["messages"].append(ChatMessage(role=role, content=message))
 
 
-def is_greeting(text: str) -> bool:
-    """
-    인사말 여부를 판단하는 함수.
-    간단한 인사말은 환영 메시지로 처리합니다.
-    """
-    greetings = ["안녕", "안녕?", "안녕하세요", "안녕하세요?"]
-    return text.strip() in greetings
+# def is_greeting(text: str) -> bool:
+#     """
+#     인사말 여부를 판단하는 함수.
+#     간단한 인사말은 환영 메시지로 처리합니다.
+#     """
+#     greetings = ["안녕", "안녕?", "안녕하세요", "안녕하세요?"]
+#     return text.strip() in greetings
 
 
 # --- 커스텀 프롬프트 runnable 정의 ---
@@ -360,22 +357,22 @@ def create_chain(model_name="gpt-4o", mode="base"):
 
 
 # 검색 쿼리 재작성
-def rewrite_query(user_question: str) -> str:
-    """
-    LLM을 활용하여 사용자 질문을 바탕으로 용인시청 관련 최신 정보를 포함할 수 있는 검색 쿼리를 동적으로 재작성합니다.
-    """
-    llm_rewriter = ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=False)
-    rewriter_prompt = (
-        "다음 질문을 바탕으로 용인시청에 관련된 최신 정보를 검색하기 위한 최적의 검색 쿼리를 만들어줘. "
-        "질문의 의미와 관련 키워드를 고려해서 검색 결과에 최신 소식이 잘 포함될 수 있도록 작성해줘.\n"
-        f"질문: {user_question}\n"
-        "검색 쿼리:"
-    )
-    rewritten = llm_rewriter.invoke(rewriter_prompt)
-    if hasattr(rewritten, "content"):
-        return rewritten.content.strip()
-    else:
-        return str(rewritten).strip()
+# def rewrite_query(user_question: str) -> str:
+#     """
+#     LLM을 활용하여 사용자 질문을 바탕으로 용인시청 관련 최신 정보를 포함할 수 있는 검색 쿼리를 동적으로 재작성합니다.
+#     """
+#     llm_rewriter = ChatOpenAI(model_name="gpt-4o", temperature=0, streaming=False)
+#     rewriter_prompt = (
+#         "다음 질문을 바탕으로 용인시청에 관련된 최신 정보를 검색하기 위한 최적의 검색 쿼리를 만들어줘. "
+#         "질문의 의미와 관련 키워드를 고려해서 검색 결과에 최신 소식이 잘 포함될 수 있도록 작성해줘.\n"
+#         f"질문: {user_question}\n"
+#         "검색 쿼리:"
+#     )
+#     rewritten = llm_rewriter.invoke(rewriter_prompt)
+#     if hasattr(rewritten, "content"):
+#         return rewritten.content.strip()
+#     else:
+#         return str(rewritten).strip()
 
 
 # 세션 초기화
@@ -442,15 +439,15 @@ if user_input:
             try:
                 query_for_search = user_input
                 results = search_top_k(query_for_search, top_k=5, ranking_mode="rrf")
-                log_debug(f"1차 검색 결과 개수: {len(results)}")
+                # log_debug(f"1차 검색 결과 개수: {len(results)}")
 
-                if not results:
-                    with st.spinner("검색 쿼리 재작성 중입니다..."):
-                        query_for_search = rewrite_query(user_input)
-                    results = search_top_k(
-                        query_for_search, top_k=3, ranking_mode="rrf"
-                    )
-                    log_debug(f"2차 검색 결과 개수: {len(results)}")
+                # if not results:
+                #     with st.spinner(""):
+                #         query_for_search = rewrite_query(user_input)
+                #     results = search_top_k(
+                #         query_for_search, top_k=3, ranking_mode="rrf"
+                #     )
+                #     log_debug(f"2차 검색 결과 개수: {len(results)}")
             except Exception as e:
                 log_debug(f"검색 중 오류 발생: {str(e)}")
                 results = []
@@ -488,22 +485,23 @@ if user_input:
                     "이 답변은 부정확할 수 있으므로 반드시 공식 홈페이지(yongin.go.kr)를 확인해 주세요."
                 )
 
-            conversation_history = ""
-            if len(st.session_state["messages"]) > 1:
-                recent_msgs = st.session_state["messages"][-5:]
-                for msg in recent_msgs:
-                    conversation_history += f"{msg.role.capitalize()}: {msg.content}\n"
-                if len(conversation_history) > 500:
-                    conversation_history = summarize_conversation(conversation_history)
+            # conversation_history = ""
+            # if len(st.session_state["messages"]) > 1:
+            #     recent_msgs = st.session_state["messages"][-5:]
+            #     for msg in recent_msgs:
+            #         conversation_history += f"{msg.role.capitalize()}: {msg.content}\n"
+            #     if len(conversation_history) > 800:
+            #         conversation_history = summarize_conversation(conversation_history)
 
-            conversation_section = (
-                f"이전 대화 내용:\n{conversation_history}\n"
-                if conversation_history
-                else ""
-            )
+            # conversation_section = (
+            #     f"이전 대화 내용:\n{conversation_history}\n"
+            #     if conversation_history
+            #     else ""
+            # )
             combined_query = (
-                f"아래는 관련 문서 내용 (RAG):\n{context_text}\n\n"
-                f"{conversation_section}최종 질문: {user_input}"
+                f"관련 문서 내용 (RAG):{context_text}\n\n"
+                f"최종 질문: {user_input}"
+                # f"{conversation_section}최종 질문: {user_input}"
             )
 
             response_generator = chain.stream(combined_query)
