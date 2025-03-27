@@ -71,6 +71,16 @@ EVENT_DOC = """\
 - *고령화 사회 대응을 위한 AI 기반 돌봄 서비스 정책*
 """
 
+EBS_TUTOR = """\
+안녕하세요! EBS 중학 과학 1 교재를 기반으로 학습을 도와주는 튜터입니다.  
+교재 내용 중에서 궁금한 점이 있다면 무엇이든 물어보세요.
+
+*📌 TIP! 이렇게 질문해 보세요!*
+- 지구계는 무엇으로 구성되어 있나요?
+- 광물과 암석의 차이는 무엇인가요?
+- 생물은 어떻게 분류되나요?
+"""
+
 # GREETING_MESSAGE 딕셔너리에 새로운 모드 추가 ✅
 GREETING_MESSAGE = {
     "base": textwrap.dedent(BASE),
@@ -79,4 +89,5 @@ GREETING_MESSAGE = {
     "research": textwrap.dedent(RESEARCH),
     "policy": textwrap.dedent(POLICY),
     "event_doc": textwrap.dedent(EVENT_DOC),
+    "ebs_tutor": textwrap.dedent(EBS_TUTOR),
 }

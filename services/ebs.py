@@ -3,10 +3,9 @@ import os
 from typing import Any, Dict, List
 
 import requests
-import streamlit as st
 from dotenv import load_dotenv
 
-from services.pdf_viewer import PDFViewerManager
+from services.pdf_viewer import PDFViewer
 
 load_dotenv()
 
@@ -18,7 +17,7 @@ class EbsRAG:
         self.index_name = "ebs-mini"
 
         # PDF 뷰어 매니저 초기화
-        self.pdf_manager = PDFViewerManager("data/ebs/pdfs/뉴런과학1_미니북.pdf")
+        self.pdf_viewer = PDFViewer("data/ebs/pdfs/뉴런과학1_미니북.pdf")
 
         # JSON 데이터 로드
         with open("data/ebs/texts/뉴런과학1_미니북.json", "r", encoding="utf-8") as f:
@@ -29,7 +28,7 @@ class EbsRAG:
         페이지에 대한 메타데이터를 반환합니다.
         """
         return {
-            "pdf_path": self.pdf_manager.pdf_path,
+            "pdf_path": self.pdf_viewer.pdf_path,
             "page_no": page_no,
             "title": self.book_data["title"],
             # PDF 뷰어에 필요한 추가 메타데이터
