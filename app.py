@@ -161,7 +161,7 @@ with st.sidebar:
                     f"💬 {len(question_text) > 30 and question_text[:30] + '...' or question_text}"
                 ):
                     st.write(
-                        f"📝 참고 페이지:\n{', '.join([f'{source.split('페이지')[0]}p' for source in source_list])}"
+                        f"📝 참고 페이지:\n{', '.join([source.replace('페이지', 'p') for source in source_list])}"
                     )
                     if st.button("📖 교재 보기", key=f"show_reference_page_{q_id}"):
                         # 모달 열림 상태를 관리
