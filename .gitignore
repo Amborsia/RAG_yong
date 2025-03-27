@@ -1,5 +1,6 @@
 # venv environment folder
 venv/
+.venv/
 python*/
 
 # logger
@@ -22,3 +23,6 @@ __pycache__/
 *.bin
 *.faiss
 *.pkl
+
+*.pid
+data/ebs/pdfs/
