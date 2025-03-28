@@ -6,74 +6,81 @@ import streamlit as st
 class PDFViewer:
     def __init__(self, image_dir):
         self.image_dir = image_dir
-        self.image_files = self.load_image_files()
+        # 파일 이름에서 페이지 번호를 추출해 정렬 (예: "page_1.png", "page_2.png", ...)
+        self.image_files = sorted(
+            os.listdir(image_dir),
+            key=lambda f: int(os.path.splitext(f)[0].split("_")[1]),
+        )
         self.total_pages = len(self.image_files)
 
-        # 뷰어별 고유 세션 상태 키 생성
-        self.session_key = f"pdf_page_{hash(self.image_dir)}"
-
-        # 세션 상태 초기화
-        if self.session_key not in st.session_state:
-            st.session_state[self.session_key] = 1
-
-    def load_image_files(self):
-        # PNG 파일만 목록에 포함시키고, 파일명을 자연스러운 순서로 정렬합니다.
-        if not os.path.exists(self.image_dir):
-            return []
-
-        files = [f for f in os.listdir(self.image_dir) if f.endswith(".png")]
-        # 파일명에서 숫자 부분을 추출해 정렬 (예: "page_1.png", "page_2.png", ...)
-        files.sort(key=lambda x: int("".join(filter(str.isdigit, x)) or 0))
-        return files
-
     def render_viewer(self):
-        # 총 페이지 수가 0이면 안내 메시지 출력
-        if self.total_pages == 0:
-            st.error("불러올 PDF 페이지 이미지가 없습니다.")
-            return
+        # 세션 상태에 현재 페이지 초기화
+        if "current_page" not in st.session_state:
+            st.session_state.current_page = 1
 
-        # 현재 페이지 가져오기
-        current_page = st.session_state[self.session_key]
+        st.write(f"페이지 {st.session_state.current_page} / {self.total_pages}")
 
-        # 현재 페이지에 해당하는 이미지 표시
-        try:
-            image_path = os.path.join(
-                self.image_dir, self.image_files[current_page - 1]
-            )
-            st.image(image_path, use_column_width=True)
-        except (IndexError, FileNotFoundError):
-            st.error(f"페이지 {current_page}를 불러올 수 없습니다.")
+        # 현재 페이지 이미지 파일 경로 설정
+        current_image_path = os.path.join(
+            self.image_dir, self.image_files[st.session_state.current_page - 1]
+        )
 
-        # 이전 및 다음 페이지로 이동하는 함수 정의
-        def go_prev():
-            st.session_state[self.session_key] = max(1, current_page - 1)
+        # 이미지 렌더링
+        st.image(current_image_path)
 
-        def go_next():
-            st.session_state[self.session_key] = min(self.total_pages, current_page + 1)
-
-        # 이전/다음 페이지 버튼을 상단에 배치
-        col1, col2, col3 = st.columns([1, 3, 1])
-
+        # 이전/다음 버튼 레이아웃
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col1:
-            prev_disabled = current_page <= 1
-            if st.button(
-                "◀️ 이전", disabled=prev_disabled, key=f"prev_{self.session_key}"
-            ):
-                go_prev()
-
-        with col2:
-            st.markdown(
-                f"""
-                <div style="text-align: center; margin-top: 8px;">
-                    <span style="font-weight: bold;">페이지 {current_page} / {self.total_pages}</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
+            if st.button("이전 페이지") and st.session_state.current_page > 1:
+                st.session_state.current_page -= 1
+                st.experimental_rerun()
         with col3:
-            next_disabled = current_page >= self.total_pages
-            if st.button(
-                "다음 ▶️", disabled=next_disabled, key=f"next_{self.session_key}"
+            if (
+                st.button("다음 페이지")
+                and st.session_state.current_page < self.total_pages
             ):
-                go_next()
+                st.session_state.current_page += 1
+                st.experimental_rerun()
+
+        # 특정 페이지로 이동하는 기능
+        st.write("특정 페이지로 이동:")
+        target_page = st.number_input(
+            "페이지 번호 입력",
+            min_value=1,
+            max_value=self.total_pages,
+            value=st.session_state.current_page,
+            step=1,
+        )
+        if st.button("이동"):
+            st.session_state.current_page = int(target_page)
+            st.experimental_rerun()
+
+    def render_modal(self, initial_page=1):
+        # 모달에 전달할 초기 페이지 번호를 설정
+        st.session_state.current_page = initial_page
+
+        st.write(f"모달 - 페이지 {st.session_state.current_page} / {self.total_pages}")
+
+        current_image_path = os.path.join(
+            self.image_dir, self.image_files[st.session_state.current_page - 1]
+        )
+
+        # 모달 내에서 이미지 렌더링
+        st.image(current_image_path)
+
+        # 모달 내에서도 이전/다음 버튼을 추가할 수 있음
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col1:
+            if (
+                st.button("이전 페이지", key="modal_prev")
+                and st.session_state.current_page > 1
+            ):
+                st.session_state.current_page -= 1
+                st.experimental_rerun()
+        with col3:
+            if (
+                st.button("다음 페이지", key="modal_next")
+                and st.session_state.current_page < self.total_pages
+            ):
+                st.session_state.current_page += 1
+                st.experimental_rerun()

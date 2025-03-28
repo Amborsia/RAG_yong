@@ -1,7 +1,6 @@
 import logging
 import os
 import uuid
-from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -142,20 +141,80 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
     )
 
 
+# @st.dialog("참고 페이지 내용")
+# def pdf_viewer_modal(page_no):
+#     """PDF 뷰어 모달 대화상자"""
+#     pdf_path = "cache/pdf_pages/뉴런과학1_미니북"
+
+#     # PDF 뷰어 인스턴스 생성
+#     pdf_viewer = PDFViewer(pdf_path)
+
+#     # 모달 열릴 때 세션 상태 초기화
+#     if "modal_open_time" not in st.session_state:
+#         st.session_state.modal_open_time = True
+#         # 모달용 페이지 상태 초기화
+#         if "modal_pdf_page" in st.session_state:
+#             del st.session_state["modal_pdf_page"]
+
+#     # 모달 전용 렌더링 함수 호출
+#     pdf_viewer.render_(initial_page=page_no)
+
+#     # 모달이 닫힐 때 상태 정리를 위한 준비
+#     if "modal_open_time" in st.session_state:
+#         del st.session_state.modal_open_time
+
+
 @st.dialog("참고 페이지 내용")
-def pdf_viewer_modal(page_no):
-    """PDF 뷰어 모달 대화상자"""
-    pdf_path = "cache/pdf_pages/뉴런과학1_미니북"
+def pdf_viewer_modal(initial_page):
+    # 모달이 처음 열릴 때 초기 페이지 번호를 세션 상태에 저장
+    if "modal_pdf_page" not in st.session_state:
+        st.session_state.modal_pdf_page = initial_page
 
-    # PDF 뷰어 인스턴스 생성
-    pdf_viewer = PDFViewer(pdf_path)
+    current_page = st.session_state.modal_pdf_page
 
-    # 기본적으로 요청된 페이지로 시작
-    if page_no is not None and 1 <= page_no <= pdf_viewer.total_pages:
-        pdf_viewer.current_page = page_no
+    # PDF 페이지 이미지가 저장된 디렉토리 경로
+    image_dir = "cache/pdf_pages/뉴런과학1_미니북"
+    pdf_viewer = PDFViewer(image_dir)
 
-    # PDF 뷰어 렌더링
-    pdf_viewer.render_viewer()
+    # PDFViewer에서 이미지 파일 목록과 총 페이지 수가 이미 계산되어 있다고 가정합니다.
+    total_pages = pdf_viewer.total_pages  # PDFViewer 내부에서 미리 캐싱되어 있다고 가정
+
+    # 업데이트를 위한 빈 컨테이너 생성
+    image_container = st.empty()
+    # info_container = st.empty()
+
+    def update_view(page):
+        # 현재 페이지 이미지 경로 구성 (리스트는 0-indexed)
+        current_image_path = os.path.join(
+            pdf_viewer.image_dir, pdf_viewer.image_files[page - 1]
+        )
+        image_container.image(current_image_path)
+        # info_container.write(f"페이지 {page} / {total_pages}")
+
+    # 최초 렌더링
+    update_view(current_page)
+
+    # 버튼 레이아웃: 이전/다음 페이지 버튼을 3개의 컬럼으로 배치
+    col_prev, col_dummy, col_next = st.columns([1, 2, 1])
+    with col_prev:
+        if st.button("이전 페이지", key="modal_prev"):
+            if current_page > 1:
+                st.session_state.modal_pdf_page = current_page - 1
+                update_view(st.session_state.modal_pdf_page)
+    with col_next:
+        if st.button("다음 페이지", key="modal_next"):
+            if current_page < total_pages:
+                st.session_state.modal_pdf_page = current_page + 1
+                update_view(st.session_state.modal_pdf_page)
+
+
+# PDF 페이지 이미지가 저장된 디렉토리 경로 설정
+image_dir = "cache/pdf_pages/뉴런과학1_미니북"
+pdf_viewer = PDFViewer(image_dir)
+# 모달을 열 때 특정 페이지(예: 3페이지)를 전달
+# if st.button("모달 열기 (3페이지)"):
+#     # st.dialog나 st.modal을 사용해서 모달 창을 띄울 수 있습니다.
+#     pdf_viewer_modal(3)
 
 
 # 사이드바 표시
