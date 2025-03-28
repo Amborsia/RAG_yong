@@ -12,9 +12,8 @@ from services.pdf_viewer import PDFViewer
 from utils.greeting_message import GREETING_MESSAGE
 from utils.prompts import load_prompt
 
+# EBS 검색 객체 생성
 ebs_rag = EbsRAG()
-
-# 초기 뷰어 제거 (기존 pdf = PDFViewer(...) 부분 삭제)
 
 load_dotenv()
 
@@ -59,32 +58,40 @@ if "search_results" not in st.session_state:
 if "questions" not in st.session_state:
     st.session_state["questions"] = {}  # 질문 목록 초기화
 if "sources" not in st.session_state:
-    st.session_state["sources"] = {}  # 참고 페이지 정보를 저장할 키
+    st.session_state["sources"] = {}  # 참고 페이지 정보를 저장할 딕셔너리
 if "modal_open" not in st.session_state:
     st.session_state["modal_open"] = False  # 모달 열림 상태
 if "pdf_viewer" not in st.session_state:
-    st.session_state["pdf_viewer"] = None  # PDF 뷰어 상태 저장용
+    st.session_state["pdf_viewer"] = None  # PDF 뷰어 인스턴스 저장용
+if "modal_current_page" not in st.session_state:
+    st.session_state["modal_current_page"] = {}
+if "active_question_id" not in st.session_state:
+    st.session_state["active_question_id"] = None
+if "pdf_viewer_directories" not in st.session_state:
+    st.session_state["pdf_viewer_directories"] = {}  # 책 이름별 이미지 디렉토리 저장
+if "book_names" not in st.session_state:
+    st.session_state["book_names"] = {}  # 질문 ID별 책 이름 저장
 
-
-# 앱 메인 부분
+# 앱 메인 타이틀 및 기존 대화 표시
 st.title("EBS 과학 튜터 챗봇")
 
-# 이전 대화 메시지(인사말 포함) 표시
 for message in st.session_state["messages"]:
     st.chat_message(message.role).write(message.content)
 
 
-# 검색 결과 필터링 함수 추가
+# 검색 결과 필터링 함수 (예시)
 def filter_results(results):
-    return [
-        r
-        for r in results
-        if r.get("score", 0) >= 0.5 and len(r.get("content", "").strip()) > 30
-    ]
+    filtered_results = []
+    for r in results:
+        if r.get("score", 0) >= 0.5 and len(r.get("content", "").strip()) > 30:
+            book_name = r.get("book_name")  # 책 이름 추가
+            filtered_results.append((r, book_name))
+    return filtered_results
 
 
+# 사용자 입력 처리
 if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat_input"):
-    question_id = str(uuid.uuid4())  # 고유한 질문 ID 생성
+    question_id = str(uuid.uuid4())  # 고유 질문 ID 생성
     st.chat_message("user").write(user_input)
     st.session_state["messages"].append(ChatMessage(role="user", content=user_input))
     st.session_state["questions"][question_id] = user_input
@@ -97,12 +104,13 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
             # 컨텍스트 구성
             context_chunks = []
             sources = []
-            for r in results:
+            for r, book_name in filter_results(results):
                 page_no = r.get("page_no")
                 content = r.get("content")
                 if page_no and content:
                     context_chunks.append(f"[{page_no}페이지]\n{content}")
                     sources.append(f"{page_no}페이지")
+                st.session_state["book_names"][question_id] = book_name  # 책 이름 저장
             context_text = "\n\n".join(context_chunks)
             if context_chunks:
                 st.session_state["pdf_viewer_state"]["current_page"] = results[0][
@@ -124,7 +132,6 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
     llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=True)
     response_generator = llm.stream(formatted_prompt)
     response_text = ""
-
     with st.chat_message("assistant"):
         response_container = st.empty()
         for chunk in response_generator:
@@ -141,75 +148,92 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
     )
 
 
-@st.dialog("참고 페이지 내용")
-def pdf_viewer_modal(initial_page):
-    # 모달 전용 페이지 번호가 세션에 없다면 정수형으로 초기화
-    if "modal_current_page" not in st.session_state:
-        st.session_state["modal_current_page"] = int(initial_page)
+# 각 질문별 모달 전용 페이지 번호를 별도로 관리
+if "modal_current_page" not in st.session_state:
+    st.session_state["modal_current_page"] = {}
 
-    image_dir = "cache/pdf_pages/뉴런과학1_미니북"
+
+# 사이드바에서 버튼 클릭 시 각 질문의 시작 페이지 번호를 저장
+def set_active(question_id, book_name):
+    # 책 이름 저장
+    st.session_state["book_names"][question_id] = book_name
+    if question_id not in st.session_state["modal_current_page"]:
+        st.session_state["modal_current_page"][question_id] = int(
+            st.session_state["pdf_viewer_state"].get("current_page", 1)
+        )
+    st.session_state["active_question_id"] = question_id
+
+
+# 모달 함수: 전달된 질문 ID(q_id)에 해당하는 페이지 번호를 사용
+@st.dialog("참고 페이지 내용")
+def pdf_viewer_modal(q_id):
+    # 질문 ID에 해당하는 책 이름을 가져옴
+    book_name = st.session_state["book_names"].get(q_id, None)
+    if not book_name:
+        st.write("책 이름을 찾을 수 없습니다.")
+        return
+
+    # 책 이름에 따른 이미지 경로 설정
+    image_dir = f"cache/pdf_pages/{book_name}"
     pdf_viewer = PDFViewer(image_dir)
-    current_page = int(st.session_state["modal_current_page"])
-    total_pages = pdf_viewer.total_pages  # PDFViewer가 총 페이지 수를 계산했다고 가정
+    total_pages = (
+        pdf_viewer.total_pages
+    )  # PDFViewer 클래스에서 총 페이지 수를 계산한다고 가정
 
     image_container = st.empty()
 
     def update_view():
-        cp = int(st.session_state["modal_current_page"])
         current_image_path = os.path.join(
             pdf_viewer.image_dir, pdf_viewer.image_files[cp - 1]
         )
-        image_container.image(current_image_path, width=600)  # 고정 크기로 표시
-        # st.write(f"페이지 {cp} / {total_pages}")
+        image_container.image(current_image_path, width=600)
+        st.write(f"페이지 {cp} / {total_pages}")
+        # 저장된 상태를 업데이트
+        st.session_state["modal_current_page"][q_id] = cp
 
+    cp = st.session_state["modal_current_page"].get(q_id, 1)
     update_view()
 
     col_prev, col_dummy, col_next = st.columns([1, 2, 1])
     with col_prev:
-        if st.button("이전 페이지", key="modal_prev"):
-            if int(st.session_state["modal_current_page"]) > 1:
-                st.session_state["modal_current_page"] = (
-                    int(st.session_state["modal_current_page"]) - 1
-                )
+        if st.button("이전 페이지", key=f"modal_prev_{q_id}"):
+            if cp > 1:
+                st.session_state["modal_current_page"][q_id] = cp - 1
                 update_view()
     with col_next:
-        if st.button("다음 페이지", key="modal_next"):
-            if int(st.session_state["modal_current_page"]) < total_pages:
-                st.session_state["modal_current_page"] = (
-                    int(st.session_state["modal_current_page"]) + 1
-                )
+        if st.button("다음 페이지", key=f"modal_next_{q_id}"):
+            if cp < total_pages:
+                st.session_state["modal_current_page"][q_id] = cp + 1
                 update_view()
 
 
-# PDF 페이지 이미지가 저장된 디렉토리 경로 설정
-image_dir = "cache/pdf_pages/뉴런과학1_미니북"
-pdf_viewer = PDFViewer(image_dir)
-# 모달을 열 때 특정 페이지(예: 3페이지)를 전달
-# if st.button("모달 열기 (3페이지)"):
-#     # st.dialog나 st.modal을 사용해서 모달 창을 띄울 수 있습니다.
-#     pdf_viewer_modal(3)
-
-
-# 사이드바 표시
-# 사이드바에서 "교재 보기" 버튼을 누를 때, 모달 전용 페이지 번호를 초기화합니다.
 with st.sidebar:
     st.write("## 📌 질문 목록 및 참고 페이지")
     if "sources" in st.session_state and "questions" in st.session_state:
         for q_id, source_list in st.session_state["sources"].items():
             if q_id in st.session_state["questions"]:
                 question_text = st.session_state["questions"][q_id]
-                with st.expander(
-                    f"💬 {len(question_text) > 30 and question_text[:30] + '...' or question_text}"
-                ):
+                display_text = (
+                    question_text[:30] + "..."
+                    if len(question_text) > 30
+                    else question_text
+                )
+                with st.expander(f"💬 {display_text}"):
                     st.write(
-                        f"📝 참고 페이지:\n{', '.join([source.replace('페이지', 'p') for source in source_list])}"
+                        f"📝 참고 페이지:\n{', '.join([src.replace('페이지', 'p') for src in source_list])}"
                     )
-                    if st.button("📖 교재 보기", key=f"show_reference_page_{q_id}"):
-                        # 새 모달을 열 때, 현재 검색 결과에 따라 초기 페이지 번호를 재설정
-                        initial_page = st.session_state["pdf_viewer_state"].get(
-                            "current_page", 1
-                        )
-                        st.session_state["modal_current_page"] = (
-                            initial_page  # 모달 전용 상태 초기화
-                        )
-                        pdf_viewer_modal(initial_page)
+
+                    # 각 버튼에 on_click 콜백을 사용해 해당 질문 ID를 저장하도록 합니다.
+                    st.button(
+                        "📖 교재 보기",
+                        key=f"show_reference_page_{q_id}",
+                        on_click=lambda q_id=q_id, book_name=st.session_state[
+                            "book_names"
+                        ].get(q_id): set_active(q_id, book_name),
+                    )
+
+# --- 모달 호출: active_question_id가 설정된 경우에만 모달을 열고, 열렸으면 바로 초기화 ---
+if st.session_state.get("active_question_id") is not None:
+    # 모달을 열고 나면, 이후 다시 같은 모달이 열리지 않도록 active_question_id를 초기화합니다.
+    pdf_viewer_modal(st.session_state["active_question_id"])
+    st.session_state["active_question_id"] = None
