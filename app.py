@@ -1,6 +1,7 @@
 import logging
 import os
-import uuid  # UUID 생성 모듈 추가
+import uuid
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -14,7 +15,7 @@ from utils.prompts import load_prompt
 
 ebs_rag = EbsRAG()
 
-pdf = PDFViewer("data/ebs/pdfs/뉴런과학1_미니북.pdf")
+# 초기 뷰어 제거 (기존 pdf = PDFViewer(...) 부분 삭제)
 
 load_dotenv()
 
@@ -62,7 +63,11 @@ if "sources" not in st.session_state:
     st.session_state["sources"] = {}  # 참고 페이지 정보를 저장할 키
 if "modal_open" not in st.session_state:
     st.session_state["modal_open"] = False  # 모달 열림 상태
+if "pdf_viewer" not in st.session_state:
+    st.session_state["pdf_viewer"] = None  # PDF 뷰어 상태 저장용
 
+
+# 앱 메인 부분
 st.title("EBS 과학 튜터 챗봇")
 
 # 이전 대화 메시지(인사말 포함) 표시
@@ -138,16 +143,19 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
 
 
 @st.dialog("참고 페이지 내용")
-def pdf_viewer_modal(item):
-    pdf_path = "data/ebs/pdfs/뉴런과학1_미니북.pdf"
-    if not os.path.exists(pdf_path):
-        st.error(f"PDF 파일을 찾을 수 없습니다: {pdf_path}")
-    else:
-        try:
-            current_page = item
-            pdf.show_pdf(int(current_page))
-        except Exception as e:
-            st.error(f"PDF 표시 중 오류 발생: {str(e)}")
+def pdf_viewer_modal(page_no):
+    """PDF 뷰어 모달 대화상자"""
+    pdf_path = "cache/pdf_pages/뉴런과학1_미니북"
+
+    # PDF 뷰어 인스턴스 생성
+    pdf_viewer = PDFViewer(pdf_path)
+
+    # 기본적으로 요청된 페이지로 시작
+    if page_no is not None and 1 <= page_no <= pdf_viewer.total_pages:
+        pdf_viewer.current_page = page_no
+
+    # PDF 뷰어 렌더링
+    pdf_viewer.render_viewer()
 
 
 # 사이드바 표시
@@ -173,6 +181,13 @@ with st.sidebar:
                                 "current_page", None
                             )
                             if current_page is not None:
-                                pdf_viewer_modal(current_page)
+                                try:
+                                    # 페이지 번호를 정수로 변환
+                                    page_no = int(current_page)
+                                    pdf_viewer_modal(page_no)
+                                except ValueError:
+                                    st.error(
+                                        f"유효하지 않은 페이지 번호: {current_page}"
+                                    )
                             # 모달이 닫히면(함수 실행이 끝나면) 상태 초기화
                             st.session_state["modal_open"] = False

@@ -12,9 +12,6 @@ Pillow>=10.0.0   # PIL for image processing
 requests>=2.31.0
 uuid>=1.30
 
-# Logging
-logging>=0.5.1.2
-
 # Optional but recommended for development
 black>=24.1.0    # code formatting
 pylint>=3.0.0    # code linting

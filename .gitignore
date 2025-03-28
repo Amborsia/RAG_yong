@@ -26,3 +26,5 @@ __pycache__/
 
 *.pid
 data/ebs/pdfs/
+data/
+cache/
