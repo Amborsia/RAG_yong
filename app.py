@@ -141,71 +141,44 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
     )
 
 
-# @st.dialog("참고 페이지 내용")
-# def pdf_viewer_modal(page_no):
-#     """PDF 뷰어 모달 대화상자"""
-#     pdf_path = "cache/pdf_pages/뉴런과학1_미니북"
-
-#     # PDF 뷰어 인스턴스 생성
-#     pdf_viewer = PDFViewer(pdf_path)
-
-#     # 모달 열릴 때 세션 상태 초기화
-#     if "modal_open_time" not in st.session_state:
-#         st.session_state.modal_open_time = True
-#         # 모달용 페이지 상태 초기화
-#         if "modal_pdf_page" in st.session_state:
-#             del st.session_state["modal_pdf_page"]
-
-#     # 모달 전용 렌더링 함수 호출
-#     pdf_viewer.render_(initial_page=page_no)
-
-#     # 모달이 닫힐 때 상태 정리를 위한 준비
-#     if "modal_open_time" in st.session_state:
-#         del st.session_state.modal_open_time
-
-
 @st.dialog("참고 페이지 내용")
 def pdf_viewer_modal(initial_page):
-    # 모달이 처음 열릴 때 초기 페이지 번호를 세션 상태에 저장
-    if "modal_pdf_page" not in st.session_state:
-        st.session_state.modal_pdf_page = initial_page
+    # 모달 전용 페이지 번호가 세션에 없다면 정수형으로 초기화
+    if "modal_current_page" not in st.session_state:
+        st.session_state["modal_current_page"] = int(initial_page)
 
-    current_page = st.session_state.modal_pdf_page
-
-    # PDF 페이지 이미지가 저장된 디렉토리 경로
     image_dir = "cache/pdf_pages/뉴런과학1_미니북"
     pdf_viewer = PDFViewer(image_dir)
+    current_page = int(st.session_state["modal_current_page"])
+    total_pages = pdf_viewer.total_pages  # PDFViewer가 총 페이지 수를 계산했다고 가정
 
-    # PDFViewer에서 이미지 파일 목록과 총 페이지 수가 이미 계산되어 있다고 가정합니다.
-    total_pages = pdf_viewer.total_pages  # PDFViewer 내부에서 미리 캐싱되어 있다고 가정
-
-    # 업데이트를 위한 빈 컨테이너 생성
     image_container = st.empty()
-    # info_container = st.empty()
 
-    def update_view(page):
-        # 현재 페이지 이미지 경로 구성 (리스트는 0-indexed)
+    def update_view():
+        cp = int(st.session_state["modal_current_page"])
         current_image_path = os.path.join(
-            pdf_viewer.image_dir, pdf_viewer.image_files[page - 1]
+            pdf_viewer.image_dir, pdf_viewer.image_files[cp - 1]
         )
-        image_container.image(current_image_path)
-        # info_container.write(f"페이지 {page} / {total_pages}")
+        image_container.image(current_image_path, width=600)  # 고정 크기로 표시
+        # st.write(f"페이지 {cp} / {total_pages}")
 
-    # 최초 렌더링
-    update_view(current_page)
+    update_view()
 
-    # 버튼 레이아웃: 이전/다음 페이지 버튼을 3개의 컬럼으로 배치
     col_prev, col_dummy, col_next = st.columns([1, 2, 1])
     with col_prev:
         if st.button("이전 페이지", key="modal_prev"):
-            if current_page > 1:
-                st.session_state.modal_pdf_page = current_page - 1
-                update_view(st.session_state.modal_pdf_page)
+            if int(st.session_state["modal_current_page"]) > 1:
+                st.session_state["modal_current_page"] = (
+                    int(st.session_state["modal_current_page"]) - 1
+                )
+                update_view()
     with col_next:
         if st.button("다음 페이지", key="modal_next"):
-            if current_page < total_pages:
-                st.session_state.modal_pdf_page = current_page + 1
-                update_view(st.session_state.modal_pdf_page)
+            if int(st.session_state["modal_current_page"]) < total_pages:
+                st.session_state["modal_current_page"] = (
+                    int(st.session_state["modal_current_page"]) + 1
+                )
+                update_view()
 
 
 # PDF 페이지 이미지가 저장된 디렉토리 경로 설정
@@ -218,6 +191,7 @@ pdf_viewer = PDFViewer(image_dir)
 
 
 # 사이드바 표시
+# 사이드바에서 "교재 보기" 버튼을 누를 때, 모달 전용 페이지 번호를 초기화합니다.
 with st.sidebar:
     st.write("## 📌 질문 목록 및 참고 페이지")
     if "sources" in st.session_state and "questions" in st.session_state:
@@ -231,22 +205,11 @@ with st.sidebar:
                         f"📝 참고 페이지:\n{', '.join([source.replace('페이지', 'p') for source in source_list])}"
                     )
                     if st.button("📖 교재 보기", key=f"show_reference_page_{q_id}"):
-                        # 모달 열림 상태를 관리
-                        if st.session_state.get("modal_open", False):
-                            st.warning("이미 모달이 열려 있습니다. 먼저 닫아주세요.")
-                        else:
-                            st.session_state["modal_open"] = True
-                            current_page = st.session_state["pdf_viewer_state"].get(
-                                "current_page", None
-                            )
-                            if current_page is not None:
-                                try:
-                                    # 페이지 번호를 정수로 변환
-                                    page_no = int(current_page)
-                                    pdf_viewer_modal(page_no)
-                                except ValueError:
-                                    st.error(
-                                        f"유효하지 않은 페이지 번호: {current_page}"
-                                    )
-                            # 모달이 닫히면(함수 실행이 끝나면) 상태 초기화
-                            st.session_state["modal_open"] = False
+                        # 새 모달을 열 때, 현재 검색 결과에 따라 초기 페이지 번호를 재설정
+                        initial_page = st.session_state["pdf_viewer_state"].get(
+                            "current_page", 1
+                        )
+                        st.session_state["modal_current_page"] = (
+                            initial_page  # 모달 전용 상태 초기화
+                        )
+                        pdf_viewer_modal(initial_page)
