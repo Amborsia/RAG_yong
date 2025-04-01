@@ -7,12 +7,23 @@ class PDFViewer:
     def __init__(self, image_dir, book_name):
         self.image_dir = image_dir
         self.book_name = book_name
-        # 파일 이름에서 페이지 번호를 추출해 정렬
-        self.image_files = sorted(
-            os.listdir(image_dir),
-            key=lambda f: int(os.path.splitext(f)[0].split("_")[1]),
-        )
+
+        # 디렉토리 존재 여부 확인
+        if not os.path.exists(image_dir):
+            raise ValueError(f"Directory not found: {image_dir}")
+
+        # 파일 목록 가져오기
+        self.image_files = [f for f in os.listdir(image_dir) if f.startswith("page_")]
+
+        # 페이지 번호로 정렬 (page_1.png, page_2.png, ...)
+        self.image_files.sort(key=lambda f: int(f.split("_")[1].split(".")[0]))
+
         self.total_pages = len(self.image_files)
+
+        if self.total_pages == 0:
+            raise ValueError(f"No image files found in directory: {image_dir}")
+
+        # print(f"Loaded {self.total_pages} pages from {image_dir}")  # 디버깅용
 
         # 세션 상태에 현재 페이지 초기화
         if f"{self.book_name}_current_page" not in st.session_state:

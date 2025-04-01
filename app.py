@@ -71,6 +71,8 @@ if "pdf_viewer_directories" not in st.session_state:
     st.session_state["pdf_viewer_directories"] = {}  # 책 이름별 이미지 디렉토리 저장
 if "book_names" not in st.session_state:
     st.session_state["book_names"] = {}  # 질문 ID별 책 이름 저장
+if "question_results" not in st.session_state:
+    st.session_state["question_results"] = {}  # 질문별 검색 결과 저장
 
 # 앱 메인 타이틀 및 기존 대화 표시
 st.title("EBS 과학 튜터 챗봇")
@@ -84,14 +86,14 @@ def filter_results(results):
     filtered_results = []
     for r in results:
         if r.get("score", 0) >= 0.5 and len(r.get("content", "").strip()) > 30:
-            book_name = r.get("book_name")  # 책 이름 추가
+            book_name = r.get("book_name") or r.get("metadata", {}).get("title")
             filtered_results.append((r, book_name))
     return filtered_results
 
 
 # 사용자 입력 처리
 if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat_input"):
-    question_id = str(uuid.uuid4())  # 고유 질문 ID 생성
+    question_id = str(uuid.uuid4())
     st.chat_message("user").write(user_input)
     st.session_state["messages"].append(ChatMessage(role="user", content=user_input))
     st.session_state["questions"][question_id] = user_input
@@ -99,6 +101,8 @@ if user_input := st.chat_input("궁금한 내용을 물어보세요!", key="chat
     try:
         results = ebs_rag.search(user_input, top_k=3)
         st.session_state["search_results"] = results
+        # 질문별로 검색 결과 저장
+        st.session_state["question_results"][question_id] = results
 
         if results:
             # 컨텍스트 구성
@@ -165,46 +169,72 @@ def set_active(question_id, book_name):
 
 
 # 모달 함수: 전달된 질문 ID(q_id)에 해당하는 페이지 번호를 사용
-@st.dialog("참고 페이지 내용")
+@st.dialog("참고 자료")
 def pdf_viewer_modal(q_id):
-    # 질문 ID에 해당하는 책 이름을 가져옴
-    book_name = st.session_state["book_names"].get(q_id, None)
+    book_name = st.session_state["book_names"].get(q_id)
     if not book_name:
-        st.write("책 이름을 찾을 수 없습니다.")
+        st.write(f"책 이름을 찾을 수 없습니다.")
         return
 
-    # 책 이름에 따른 이미지 경로 설정
-    image_dir = f"cache/pdf_pages/{book_name}"
-    pdf_viewer = PDFViewer(image_dir)
-    total_pages = (
-        pdf_viewer.total_pages
-    )  # PDFViewer 클래스에서 총 페이지 수를 계산한다고 가정
+    # 모달 제목 변경
+    st.markdown(f"### {book_name.replace('_', ' ')}")
+
+    image_dir = f"data/ebs/pages/{book_name}"
+    try:
+        pdf_viewer = PDFViewer(image_dir, book_name)
+    except ValueError as e:
+        st.error(f"PDF 뷰어 초기화 실패: {str(e)}")
+        return
 
     image_container = st.empty()
+    page_info = st.empty()
 
     def update_view():
-        current_image_path = os.path.join(
-            pdf_viewer.image_dir, pdf_viewer.image_files[cp - 1]
-        )
-        image_container.image(current_image_path, width=600)
-        st.write(f"페이지 {cp} / {total_pages}")
-        # 저장된 상태를 업데이트
-        st.session_state["modal_current_page"][q_id] = cp
+        current_page = st.session_state["modal_current_page"].get(q_id, 1)
 
-    cp = st.session_state["modal_current_page"].get(q_id, 1)
+        # 페이지 범위 확인
+        if current_page < 1:
+            current_page = 1
+        elif current_page > pdf_viewer.total_pages:
+            current_page = pdf_viewer.total_pages
+
+        try:
+            current_image_path = os.path.join(
+                pdf_viewer.image_dir, pdf_viewer.image_files[current_page - 1]
+            )
+            image_container.image(current_image_path, width=600)
+            # 페이지 정보 업데이트
+            page_info.markdown(
+                f"<div style='text-align: center'>{current_page}/{pdf_viewer.total_pages}</div>",
+                unsafe_allow_html=True,
+            )
+        except Exception as e:
+            st.error(f"이미지 로딩 실패: {str(e)}")
+
     update_view()
 
-    col_prev, col_dummy, col_next = st.columns([1, 2, 1])
+    # 네비게이션 버튼을 함수 밖으로 이동
+    col_prev, col_page, col_next = st.columns([1, 2, 1])
     with col_prev:
-        if st.button("이전 페이지", key=f"modal_prev_{q_id}"):
-            if cp > 1:
-                st.session_state["modal_current_page"][q_id] = cp - 1
+        if st.button("◀ 이전", key=f"modal_prev_{q_id}"):
+            current_page = st.session_state["modal_current_page"].get(q_id, 1)
+            if current_page > 1:
+                st.session_state["modal_current_page"][q_id] = current_page - 1
                 update_view()
+    # 가운데 열은 비워둠 (페이지 정보가 위에서 표시됨)
     with col_next:
-        if st.button("다음 페이지", key=f"modal_next_{q_id}"):
-            if cp < total_pages:
-                st.session_state["modal_current_page"][q_id] = cp + 1
+        if st.button("다음 ▶", key=f"modal_next_{q_id}"):
+            current_page = st.session_state["modal_current_page"].get(q_id, 1)
+            if current_page < pdf_viewer.total_pages:
+                st.session_state["modal_current_page"][q_id] = current_page + 1
                 update_view()
+
+
+# 페이지 번호를 포함하여 모달을 활성화하는 함수
+def set_active_with_page(question_id, book_name, page_no):
+    st.session_state["book_names"][question_id] = book_name
+    st.session_state["modal_current_page"][question_id] = int(page_no)
+    st.session_state["active_question_id"] = question_id
 
 
 with st.sidebar:
@@ -219,18 +249,25 @@ with st.sidebar:
                     else question_text
                 )
                 with st.expander(f"💬 {display_text}"):
-                    st.write(
-                        f"📝 참고 페이지:\n{', '.join([src.replace('페이지', 'p') for src in source_list])}"
-                    )
+                    # 해당 질문의 검색 결과 가져오기
+                    results = st.session_state["question_results"].get(q_id, [])
+                    if results and len(results) > 0:
+                        st.write("📝 참고 페이지")
+                        # 각 결과를 한 줄로 표시
+                        for idx, result in enumerate(results[:3]):
+                            page_no = result.get("page_no")
+                            book_name = result.get("metadata", {}).get("title")
+                            # score = result.get("score", 0)
+                            # similarity = int(score * 100)
 
-                    # 각 버튼에 on_click 콜백을 사용해 해당 질문 ID를 저장하도록 합니다.
-                    st.button(
-                        "📖 교재 보기",
-                        key=f"show_reference_page_{q_id}",
-                        on_click=lambda q_id=q_id, book_name=st.session_state[
-                            "book_names"
-                        ].get(q_id): set_active(q_id, book_name),
-                    )
+                            st.button(
+                                f"📖 {book_name} {page_no}p",
+                                key=f"page_btn_{q_id}_{idx}",
+                                on_click=lambda q_id=q_id, b_name=book_name, p_no=page_no: set_active_with_page(
+                                    q_id, b_name, p_no
+                                ),
+                                use_container_width=True,
+                            )
 
 # --- 모달 호출: active_question_id가 설정된 경우에만 모달을 열고, 열렸으면 바로 초기화 ---
 if st.session_state.get("active_question_id") is not None:

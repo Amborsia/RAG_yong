@@ -59,7 +59,11 @@ class EbsRAG:
 
             for hit in results.get("_objects", [])[:top_k]:
                 try:
-                    page_no = hit["_metadata"]["pageNo"]
+                    metadata = hit["_metadata"]
+                    page_no = metadata["pageNo"]
+                    book_name = metadata["title"]  # metadata에서 title을 가져옴
+
+                    # 해당 책의 페이지 내용 가져오기
                     page_content = self.book_data["pages"].get(page_no, "")
 
                     enriched_results.append(
@@ -67,7 +71,8 @@ class EbsRAG:
                             "score": hit["_score"],
                             "page_no": page_no,
                             "content": page_content,
-                            "metadata": hit["_metadata"],
+                            "metadata": metadata,
+                            "book_name": book_name,  # 실제 책 제목 사용
                         }
                     )
                 except KeyError as e:
