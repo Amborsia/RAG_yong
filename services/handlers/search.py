@@ -9,15 +9,23 @@ def filter_results(results: List[dict]) -> List[Tuple[dict, str]]:
     minibook_results = []
     other_results = []
 
+    # 첫 번째 패스: 높은 품질의 결과 필터링
     for r in results:
-        if r.get("score", 0) >= 0.5 and len(r.get("content", "").strip()) > 30:
-            book_name = r.get("book_name") or r.get("metadata", {}).get("title", "")
-            if "미니북" in book_name:
+        book_name = r.get("book_name") or r.get("metadata", {}).get("title", "")
+        content = r.get("content", "").strip()
+
+        if "미니북" in book_name:
+            if r.get("score", 0) >= 0.5 and len(content) > 30:
                 minibook_results.append((r, book_name))
-            else:
+            # 낮은 품질의 미니북 결과도 별도 저장
+            elif len(content) > 0:
+                if not any(mb[1] == book_name for mb in minibook_results):
+                    minibook_results.append((r, book_name))
+        else:
+            if r.get("score", 0) >= 0.5 and len(content) > 30:
                 other_results.append((r, book_name))
 
-    # 미니북이 없는 경우 점수가 낮거나 내용이 짧은 미니북도 포함
+    # 미니북 결과가 없는 경우 점수가 낮거나 내용이 짧은 미니북도 포함
     if not minibook_results:
         for r in results:
             book_name = r.get("book_name") or r.get("metadata", {}).get("title", "")
@@ -25,11 +33,19 @@ def filter_results(results: List[dict]) -> List[Tuple[dict, str]]:
                 minibook_results.append((r, book_name))
                 break
 
-    # 결과 조합: 미니북을 우선 포함하고 나머지 결과 추가
-    filtered_results.extend(minibook_results)
-    remaining_slots = 3 - len(filtered_results)  # 최대 3개까지만 유지
+    # 결과 조합: 미니북을 우선 포함
+    filtered_results.extend(
+        sorted(minibook_results, key=lambda x: x[0].get("score", 0), reverse=True)
+    )
+
+    # 남은 슬롯에 다른 결과 추가
+    remaining_slots = 3 - len(filtered_results)
     if remaining_slots > 0:
-        filtered_results.extend(other_results[:remaining_slots])
+        filtered_results.extend(
+            sorted(other_results, key=lambda x: x[0].get("score", 0), reverse=True)[
+                :remaining_slots
+            ]
+        )
 
     return filtered_results
 
