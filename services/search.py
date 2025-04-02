@@ -141,7 +141,7 @@ def search_top_k(query, top_k=5, ranking_mode="rrf"):
         final_chunk_indices = [c_idx for c_idx, _ in dense_results][:top_k]
 
     # 청크 인덱스를 문서 데이터로 변환
-    chunk_to_doc_map = chunked.get("chunk_to_doc_map", [])
+    chunk_to_doc_map = chunked.get("chunk_to_doc_map", {})
     log_debug(
         f"청크 맵 길이: {len(chunk_to_doc_map)}, 청크 개수: {len(all_chunks)}, 문서 개수: {len(db.documents)}"
     )
@@ -157,14 +157,11 @@ def search_top_k(query, top_k=5, ranking_mode="rrf"):
 
         chunk_text = all_chunks[c_idx]
 
-        # 문서 맵 인덱스 범위 확인
-        if c_idx >= len(chunk_to_doc_map):
-            log_debug(
-                f"문서 맵 인덱스 범위 초과: {c_idx} (전체 맵 개수: {len(chunk_to_doc_map)})"
-            )
+        # 문서 맵에서 문서 인덱스 가져오기
+        doc_idx = chunk_to_doc_map.get(str(c_idx))
+        if doc_idx is None:
+            log_debug(f"청크 {c_idx}에 대한 문서 인덱스를 찾을 수 없습니다.")
             continue
-
-        doc_idx = chunk_to_doc_map[c_idx]
 
         # 문서 인덱스 범위 확인
         if doc_idx < 0 or doc_idx >= len(db.documents):

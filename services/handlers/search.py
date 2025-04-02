@@ -23,7 +23,9 @@ def process_search_results(
     if not results:
         return "관련 내용을 찾지 못했습니다.", []
 
-    for r, book_name in filter_results(results):
+    filtered_results = filter_results(results)
+    for result in filtered_results:
+        r, book_name = result
         page_no = r.get("page_no")
         content = r.get("content")
         if page_no and content:
