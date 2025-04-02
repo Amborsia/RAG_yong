@@ -108,10 +108,17 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                 if full_response:  # 응답이 있는 경우에만 표시
                     response_container.markdown(full_response)
                     response_text = full_response
+
+                    # 응답에 "관련 자료를 찾을 수 없습니다" 포함 여부 확인
+                    if "관련 자료를 찾을 수 없습니다" in response_text:
+                        sources = [{"message": "생성된 답변입니다"}]
+                    else:
+                        sources = sources  # 기존 sources 유지
                 else:
                     response_text = (
                         "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
                     )
+                    sources = []
             except Exception as e:
                 st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
                 response_text = "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."

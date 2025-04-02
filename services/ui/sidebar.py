@@ -25,17 +25,33 @@ def render_sidebar():
 
                 with st.expander(f"💬 {display_text}"):
                     results = st.session_state["question_results"].get(q_id, [])
-                    if results:
-                        st.write("📝 참고 페이지")
-                        for idx, result in enumerate(results[:3]):
-                            page_no = result.get("page_no")
-                            book_name = result.get("metadata", {}).get("title")
+                    messages = st.session_state.get("messages", [])
 
-                            st.button(
-                                f"📖 {book_name} {page_no}p",
-                                key=f"page_btn_{q_id}_{idx}",
-                                on_click=lambda q_id=q_id, b_name=book_name, p_no=page_no: set_active_with_page(
-                                    q_id, b_name, p_no
-                                ),
-                                use_container_width=True,
-                            )
+                    # 해당 질문에 대한 응답 찾기
+                    question_idx = next(
+                        (
+                            i
+                            for i, msg in enumerate(messages)
+                            if msg.role == "user"
+                            and msg.content == st.session_state["questions"][q_id]
+                        ),
+                        -1,
+                    )
+                    if question_idx != -1 and question_idx + 1 < len(messages):
+                        response = messages[question_idx + 1].content
+                        if "관련 자료를 찾을 수 없습니다" in response:
+                            st.write("생성된 답변입니다")
+                        elif results:
+                            st.write("📝 참고 페이지")
+                            for idx, result in enumerate(results[:3]):
+                                page_no = result.get("page_no")
+                                book_name = result.get("metadata", {}).get("title")
+
+                                st.button(
+                                    f"📖 {book_name} {page_no}p",
+                                    key=f"page_btn_{q_id}_{idx}",
+                                    on_click=lambda q_id=q_id, b_name=book_name, p_no=page_no: set_active_with_page(
+                                        q_id, b_name, p_no
+                                    ),
+                                    use_container_width=True,
+                                )
