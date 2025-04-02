@@ -50,6 +50,9 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                 response_text += chunk_text
                 response_container.markdown(response_text)
 
+        if "관련 자료를 찾을 수 없습니다" in response_text:
+            sources = [{"message": "생성된 답변입니다"}]
+
         st.session_state["messages"].append(
             ChatMessage(role="assistant", content=response_text)
         )
