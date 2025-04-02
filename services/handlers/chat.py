@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 
@@ -54,41 +55,63 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
         with st.chat_message("assistant"):
             response_container = st.empty()
             try:
-                with st.spinner("답변을 생성하는 중..."):
-                    response = requests.post(
-                        f"{GEMMA_URL}/v1/chat/completions",
-                        json={
-                            "model": "chat_model",
-                            "messages": [
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": formatted_prompt}
-                                    ],
-                                }
-                            ],
-                            "max_tokens": 1000,
-                        },
-                        headers={
-                            "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
-                            "Content-Type": "application/json",
-                        },
+                response = requests.post(
+                    f"{GEMMA_URL}/v1/chat/completions",
+                    json={
+                        "model": "chat_model",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [{"type": "text", "text": formatted_prompt}],
+                            }
+                        ],
+                        "max_tokens": 1000,
+                        "stream": True,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
+                        "Content-Type": "application/json",
+                    },
+                    stream=True,
+                )
+                response.raise_for_status()
+
+                full_response = ""
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            line_text = line.decode("utf-8")
+                            if line_text.startswith("data: "):
+                                line_text = line_text[6:]  # 'data: ' 제거
+                                if line_text.strip() == "[DONE]":
+                                    break  # 스트리밍 완료
+                                try:
+                                    json_response = json.loads(line_text)
+                                    if (
+                                        json_response.get("choices")
+                                        and len(json_response["choices"]) > 0
+                                    ):
+                                        delta = json_response["choices"][0].get(
+                                            "delta", {}
+                                        )
+                                        if delta.get("content"):
+                                            full_response += delta["content"]
+                                            response_container.markdown(
+                                                full_response + "▌"
+                                            )
+                                except json.JSONDecodeError:
+                                    continue  # JSON 파싱 실패한 라인은 무시
+                        except UnicodeDecodeError:
+                            continue  # 디코딩 실패한 라인은 무시
+
+                # 최종 응답 표시
+                if full_response:  # 응답이 있는 경우에만 표시
+                    response_container.markdown(full_response)
+                    response_text = full_response
+                else:
+                    response_text = (
+                        "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
                     )
-                    response.raise_for_status()
-                    result = response.json()
-                    if result.get("choices") and len(result["choices"]) > 0:
-                        message = result["choices"][0].get("message", {})
-                        if message.get("role") == "assistant":
-                            response_text = message.get("content", "")
-                        else:
-                            response_text = (
-                                "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
-                            )
-                    else:
-                        response_text = (
-                            "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
-                        )
-                    response_container.markdown(response_text)
             except Exception as e:
                 st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
                 response_text = "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."

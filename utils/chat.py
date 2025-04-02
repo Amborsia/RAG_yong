@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Any, Dict, List
 
@@ -56,39 +57,44 @@ def filter_conversation(history_msgs):
     return filtered
 
 
-def create_gemma_chain():
-    """
-    Gemma3 API를 사용하는 체인을 반환합니다.
-    """
+def gemma_call(prompt: str) -> str:
+    try:
+        response = requests.post(
+            f"{GEMMA_URL}/v1/chat/completions",
+            json={
+                "model": MODELS["gemma3"],
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": prompt}]}
+                ],
+                "max_tokens": 1000,
+                "stream": True,  # 스트리밍 활성화
+            },
+            headers={
+                "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
+                "Content-Type": "application/json",
+            },
+            stream=True,  # requests의 스트리밍 옵션 활성화
+        )
+        response.raise_for_status()
 
-    def gemma_call(prompt: str) -> str:
-        try:
-            response = requests.post(
-                f"{GEMMA_URL}/v1/chat/completions",
-                json={
-                    "model": MODELS["gemma3"],
-                    "messages": [
-                        {"role": "user", "content": [{"type": "text", "text": prompt}]}
-                    ],
-                    "max_tokens": 1000,
-                },
-                headers={
-                    "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
-                    "Content-Type": "application/json",
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
-            if result.get("choices") and len(result["choices"]) > 0:
-                message = result["choices"][0].get("message", {})
-                if message.get("role") == "assistant":
-                    return message.get("content", "")
-            return ""
-        except Exception as e:
-            st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
-            return ""
+        full_response = ""
+        response_container = st.empty()
 
-    return gemma_call
+        for line in response.iter_lines():
+            if line:
+                # "data: " 프리픽스 제거 및 JSON 파싱
+                json_response = json.loads(line.decode("utf-8").replace("data: ", ""))
+                if json_response.get("choices") and len(json_response["choices"]) > 0:
+                    delta = json_response["choices"][0].get("delta", {})
+                    if delta.get("content"):
+                        full_response += delta["content"]
+                        response_container.markdown(full_response + "▌")
+
+        response_container.markdown(full_response)
+        return full_response
+    except Exception as e:
+        st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
+        return ""
 
 
 def create_chain(model_name=MODELS["gemma3"]):
@@ -96,7 +102,7 @@ def create_chain(model_name=MODELS["gemma3"]):
     프롬프트를 로드한 후, Gemma3 API를 사용하는 체인을 반환합니다.
     """
     prompt = load_prompt("prompts/yongin.yaml")
-    chain = {"question": RunnablePassthrough()} | prompt | create_gemma_chain()
+    chain = {"question": RunnablePassthrough()} | prompt | gemma_call
     return chain
 
 
@@ -110,7 +116,7 @@ def rewrite_query(user_question: str) -> str:
         f"질문: {user_question}\n"
         "최적화된 검색 쿼리:"
     )
-    rewritten = create_gemma_chain()(rewriter_prompt)
+    rewritten = gemma_call(rewriter_prompt)
     return rewritten.strip()
 
 
@@ -121,7 +127,7 @@ def summarize_conversation(history_text: str) -> str:
     summary_prompt = (
         f"다음 대화 내용을 간단하게 요약해줘:\n\n{history_text}\n\n간단하게 요약해줘."
     )
-    return create_gemma_chain()(summary_prompt).strip()
+    return gemma_call(summary_prompt).strip()
 
 
 def detect_language(text: str) -> str:
@@ -133,7 +139,7 @@ def detect_language(text: str) -> str:
         "예시: 'ko' (한국어), 'en' (영어), 'ja' (일본어).\n"
         f"텍스트: '''{text}'''"
     )
-    lang = create_gemma_chain()(prompt).strip()
+    lang = gemma_call(prompt).strip()
     if lang not in {"ko", "en", "ja"}:
         lang = "ko"
     return lang
@@ -144,7 +150,7 @@ def translate_text(text: str, target_lang: str) -> str:
     주어진 텍스트를 target_lang 언어로 번역합니다.
     """
     prompt = f"다음 텍스트를 '{target_lang}'로 번역해줘:\n{text}"
-    return create_gemma_chain()(prompt).strip()
+    return gemma_call(prompt).strip()
 
 
 def summarize_sources(results):
