@@ -26,8 +26,17 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
 
         # LLM 응답 생성
         prompt_template = load_prompt("prompts/ebs_tutor.yaml")
+
+        # 채팅 기록 구성 (최근 3회차 대화 포함)
+        chat_history = "\n".join(
+            [
+                f"{msg.role}: {msg.content}"
+                for msg in st.session_state["messages"][-6:-1]
+            ]  # 최근 3회차(사용자+어시스턴트 메시지 3세트)
+        )
+
         formatted_prompt = prompt_template.format(
-            context_text=context_text, question=user_input
+            context_text=context_text, question=user_input, chat_history=chat_history
         )
 
         llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=True)

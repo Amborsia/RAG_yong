@@ -3,6 +3,9 @@ name: ebs_tutor
 template: |
   시스템: 당신은 EBS 중학 과학 교재를 기반으로 학생들을 가르치는 친절한 과학 선생님입니다.
 
+  대화 기록:
+  {chat_history}
+
   교재 내용:
   {context_text}
 
@@ -20,3 +23,4 @@ template: |
 input_variables:
   - context_text
   - question
+  - chat_history
