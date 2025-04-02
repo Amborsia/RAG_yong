@@ -1,15 +1,22 @@
+import os
+from typing import Any, Dict, List
+
+import requests
 import streamlit as st
+from dotenv import load_dotenv
 from langchain_core.messages.chat import ChatMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
-from langchain_openai import ChatOpenAI
 
 from utils.prompts import load_prompt
 
+# 환경 변수 로드
+load_dotenv()
+
+# Gemma3 설정
+GEMMA_URL = os.getenv("GEMMA_URL", "http://localhost:8000")  # 기본값 설정
 MODELS = {
-    "gpt-4o-mini": "gpt-4o-mini",
-    "gpt-4o": "gpt-4o",
-    "gpt-4-turbo": "gpt-4-turbo",
+    "gemma3": "chat_model",  # Gemma3 모델명
 }
 
 
@@ -49,13 +56,47 @@ def filter_conversation(history_msgs):
     return filtered
 
 
-def create_chain(model_name=MODELS["gpt-4o-mini"]):
+def create_gemma_chain():
     """
-    프롬프트를 로드한 후, 스트리밍 응답 체인을 반환합니다.
+    Gemma3 API를 사용하는 체인을 반환합니다.
+    """
+
+    def gemma_call(prompt: str) -> str:
+        try:
+            response = requests.post(
+                f"{GEMMA_URL}/v1/chat/completions",
+                json={
+                    "model": MODELS["gemma3"],
+                    "messages": [
+                        {"role": "user", "content": [{"type": "text", "text": prompt}]}
+                    ],
+                    "max_tokens": 1000,
+                },
+                headers={
+                    "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
+                    "Content-Type": "application/json",
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
+            if result.get("choices") and len(result["choices"]) > 0:
+                message = result["choices"][0].get("message", {})
+                if message.get("role") == "assistant":
+                    return message.get("content", "")
+            return ""
+        except Exception as e:
+            st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
+            return ""
+
+    return gemma_call
+
+
+def create_chain(model_name=MODELS["gemma3"]):
+    """
+    프롬프트를 로드한 후, Gemma3 API를 사용하는 체인을 반환합니다.
     """
     prompt = load_prompt("prompts/yongin.yaml")
-    llm = ChatOpenAI(model_name=model_name, temperature=0.8, streaming=True)
-    chain = {"question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
+    chain = {"question": RunnablePassthrough()} | prompt | create_gemma_chain()
     return chain
 
 
@@ -63,53 +104,36 @@ def rewrite_query(user_question: str) -> str:
     """
     사용자의 질문을 분석하여, 용인시청 관련 최신 정보를 효과적으로 검색할 수 있는 최적화된 검색 쿼리를 생성합니다.
     """
-    llm_rewriter = ChatOpenAI(
-        model_name=MODELS["gpt-4o-mini"], temperature=0.8, streaming=False
-    )
     rewriter_prompt = (
         "다음 질문을 분석하여 용인시청 관련 최신 정보(정책, 서비스, 행사 등)를 효과적으로 검색할 수 있는 "
         "핵심 키워드와 문장을 포함한 최적의 검색 쿼리를 만들어주세요. 답변은 간결하고 구체적으로 작성해 주세요.\n"
         f"질문: {user_question}\n"
         "최적화된 검색 쿼리:"
     )
-    rewritten = llm_rewriter.invoke(rewriter_prompt)
-    return (
-        rewritten.content.strip()
-        if hasattr(rewritten, "content")
-        else str(rewritten).strip()
-    )
+    rewritten = create_gemma_chain()(rewriter_prompt)
+    return rewritten.strip()
 
 
 def summarize_conversation(history_text: str) -> str:
     """
     주어진 대화 내역을 간단하게 요약하여 반환합니다.
     """
-    llm_summary = ChatOpenAI(
-        model_name=MODELS["gpt-4o-mini"], temperature=0, streaming=False
-    )
     summary_prompt = (
         f"다음 대화 내용을 간단하게 요약해줘:\n\n{history_text}\n\n간단하게 요약해줘."
     )
-    summary_response = llm_summary.invoke(summary_prompt)
-    if hasattr(summary_response, "content"):
-        return summary_response.content.strip()
-    else:
-        return str(summary_response).strip()
+    return create_gemma_chain()(summary_prompt).strip()
 
 
 def detect_language(text: str) -> str:
     """
     주어진 텍스트의 전체 맥락을 고려하여, 해당 언어의 ISO 639-1 코드를 반환합니다.
-    예: 한국어 'ko', 영어 'en', 일본어 'ja'
     """
-    llm = ChatOpenAI(model_name=MODELS["gpt-4o-mini"], temperature=0, streaming=False)
     prompt = (
         "다음 텍스트의 전체 내용을 고려하여, 해당 텍스트가 어떤 언어로 작성되었는지 ISO 639-1 코드로 한 단어로 응답해 주세요. "
         "예시: 'ko' (한국어), 'en' (영어), 'ja' (일본어).\n"
         f"텍스트: '''{text}'''"
     )
-    response = llm.invoke(prompt)
-    lang = response.content.strip() if hasattr(response, "content") else "ko"
+    lang = create_gemma_chain()(prompt).strip()
     if lang not in {"ko", "en", "ja"}:
         lang = "ko"
     return lang
@@ -119,10 +143,8 @@ def translate_text(text: str, target_lang: str) -> str:
     """
     주어진 텍스트를 target_lang 언어로 번역합니다.
     """
-    llm = ChatOpenAI(model_name=MODELS["gpt-4o-mini"], temperature=0, streaming=False)
     prompt = f"다음 텍스트를 '{target_lang}'로 번역해줘:\n{text}"
-    response = llm.invoke(prompt)
-    return response.content.strip() if hasattr(response, "content") else text
+    return create_gemma_chain()(prompt).strip()
 
 
 def summarize_sources(results):
