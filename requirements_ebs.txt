@@ -15,3 +15,5 @@ uuid>=1.30
 # Optional but recommended for development
 black>=24.1.0    # code formatting
 pylint>=3.0.0    # code linting
+pydantic>=2.0
+pydantic-settings>=2.0.3
