@@ -7,8 +7,6 @@ from langchain_openai import ChatOpenAI
 from services.ebs import EbsRAG
 from utils.prompts import load_prompt
 
-from .search import process_search_results
-
 
 def handle_user_input(user_input: str, ebs_rag: EbsRAG):
     """사용자 입력 처리"""
@@ -18,11 +16,15 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
     st.session_state["questions"][question_id] = user_input
 
     try:
-        results = ebs_rag.search(user_input, top_k=3)
-        st.session_state["search_results"] = results
-        st.session_state["question_results"][question_id] = results
+        with st.spinner("검색 중..."):
+            # 검색과 결과 가공을 한번에 처리
+            context_text, sources, results = ebs_rag.search_with_processed_results(
+                user_input, question_id, top_k=3
+            )
 
-        context_text, sources = process_search_results(results, question_id)
+            # 검색 결과 저장
+            st.session_state["search_results"] = results
+            st.session_state["question_results"][question_id] = results
 
         # LLM 응답 생성
         prompt_template = load_prompt("prompts/ebs_tutor.yaml")
@@ -57,8 +59,14 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
             ChatMessage(role="assistant", content=response_text)
         )
         st.session_state["sources"][question_id] = sources
-        if results:
-            st.session_state["pdf_viewer_state"]["current_page"] = results[0]["page_no"]
+        if sources:  # 소스가 있는 경우에만 페이지 업데이트
+            try:
+                first_source = sources[0]
+                if isinstance(first_source, str):
+                    page_no = int(first_source.replace("페이지", ""))
+                    st.session_state["pdf_viewer_state"]["current_page"] = page_no
+            except (ValueError, IndexError):
+                pass  # 페이지 번호 파싱 실패 시 무시
 
     except Exception as e:
         st.error(f"검색 중 오류 발생: {str(e)}")
