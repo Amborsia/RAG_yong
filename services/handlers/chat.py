@@ -10,8 +10,6 @@ from langchain_core.messages.chat import ChatMessage
 from services.ebs import EbsRAG
 from utils.prompts import load_prompt
 
-from .search import process_search_results
-
 # 환경 변수 로드
 load_dotenv()
 
@@ -28,11 +26,14 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
 
     try:
         with st.spinner("검색 중..."):
-            results = ebs_rag.search(user_input, top_k=3)
+            # 검색과 결과 가공을 한번에 처리
+            context_text, sources, results = ebs_rag.search_with_processed_results(
+                user_input, question_id, top_k=3
+            )
+
+            # 검색 결과 저장
             st.session_state["search_results"] = results
             st.session_state["question_results"][question_id] = results
-
-            context_text, sources = process_search_results(results, question_id)
 
             # 프롬프트 템플릿 로드
             prompt_template = load_prompt("prompts/ebs_tutor.yaml")
@@ -112,8 +113,6 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                     # 응답에 "관련 자료를 찾을 수 없습니다" 포함 여부 확인
                     if "관련 자료를 찾을 수 없습니다" in response_text:
                         sources = [{"message": "생성된 답변입니다"}]
-                    else:
-                        sources = sources  # 기존 sources 유지
                 else:
                     response_text = (
                         "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
@@ -127,8 +126,14 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
             ChatMessage(role="assistant", content=response_text)
         )
         st.session_state["sources"][question_id] = sources
-        if results:
-            st.session_state["pdf_viewer_state"]["current_page"] = results[0]["page_no"]
+        if sources:  # 소스가 있는 경우에만 페이지 업데이트
+            try:
+                first_source = sources[0]
+                if isinstance(first_source, str):
+                    page_no = int(first_source.replace("페이지", ""))
+                    st.session_state["pdf_viewer_state"]["current_page"] = page_no
+            except (ValueError, IndexError):
+                pass  # 페이지 번호 파싱 실패 시 무시
 
     except Exception as e:
         st.error(f"검색 중 오류 발생: {str(e)}")
