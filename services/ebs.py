@@ -36,7 +36,7 @@ class AppSettings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_endpoint: str = "https://api.smith.langchain.com"
     langchain_api_key: str
-    langchain_project: str = "Yong-in RAG"
+    langchain_project: str = "EBS 과학 튜터"
     port: int = 8000
 
     class Config:
