@@ -53,7 +53,7 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                 response_text += chunk_text
                 response_container.markdown(response_text)
 
-        if NOT_FOUND_IN_TEXTBOOK in response_text:
+        if "찾을 수 없는 내용이에요" in response_text:
             sources = [{"message": "생성된 답변입니다"}]
 
         st.session_state["messages"].append(
