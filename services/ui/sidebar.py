@@ -39,7 +39,7 @@ def render_sidebar():
                     )
                     if question_idx != -1 and question_idx + 1 < len(messages):
                         response = messages[question_idx + 1].content
-                        if NOT_FOUND_IN_TEXTBOOK in response:
+                        if "찾을 수 없는 내용이에요." in response:
                             st.write(NOT_FOUND_IN_TEXTBOOK)
                         elif results:
                             st.write("📝 참고 페이지")
