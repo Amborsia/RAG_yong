@@ -7,6 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain_core.messages.chat import ChatMessage
 
+from services.constants import NOT_FOUND_IN_TEXTBOOK
 from services.ebs import EbsRAG
 from utils.prompts import load_prompt
 
@@ -110,8 +111,8 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                     response_container.markdown(full_response)
                     response_text = full_response
 
-                    # 응답에 "관련 자료를 찾을 수 없습니다" 포함 여부 확인
-                    if "관련 자료를 찾을 수 없습니다" in response_text:
+                    # 응답에 "찾을 수 없는 내용이에요." 포함 여부 확인
+                    if "찾을 수 없는 내용이에요." in response_text:
                         sources = [{"message": "생성된 답변입니다"}]
                 else:
                     response_text = (
