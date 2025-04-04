@@ -1,14 +1,13 @@
 import json
 import os
-from typing import Any, Dict, List
 
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_core.messages.chat import ChatMessage
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
+from utils.custom_logging import gemma_trace
 from utils.prompts import load_prompt
 
 # 환경 변수 로드
@@ -57,6 +56,7 @@ def filter_conversation(history_msgs):
     return filtered
 
 
+@gemma_trace(project_name="ebs-science")
 def gemma_call(prompt: str) -> str:
     try:
         response = requests.post(
@@ -67,13 +67,13 @@ def gemma_call(prompt: str) -> str:
                     {"role": "user", "content": [{"type": "text", "text": prompt}]}
                 ],
                 "max_tokens": 1000,
-                "stream": True,  # 스트리밍 활성화
+                "stream": True,
             },
             headers={
                 "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
                 "Content-Type": "application/json",
             },
-            stream=True,  # requests의 스트리밍 옵션 활성화
+            stream=True,
         )
         response.raise_for_status()
 
@@ -82,19 +82,33 @@ def gemma_call(prompt: str) -> str:
 
         for line in response.iter_lines():
             if line:
-                # "data: " 프리픽스 제거 및 JSON 파싱
-                json_response = json.loads(line.decode("utf-8").replace("data: ", ""))
-                if json_response.get("choices") and len(json_response["choices"]) > 0:
-                    delta = json_response["choices"][0].get("delta", {})
-                    if delta.get("content"):
-                        full_response += delta["content"]
-                        response_container.markdown(full_response + "▌")
+                try:
+                    line_text = line.decode("utf-8")
+                    if line_text.startswith("data: "):
+                        line_text = line_text[6:]  # 'data: ' 제거
+                        if line_text.strip() == "[DONE]":
+                            break  # 스트리밍 완료
+                        try:
+                            json_response = json.loads(line_text)
+                            if (
+                                json_response.get("choices")
+                                and len(json_response["choices"]) > 0
+                            ):
+                                delta = json_response["choices"][0].get("delta", {})
+                                if delta.get("content"):
+                                    full_response += delta["content"]
+                                    response_container.markdown(full_response + "▌")
+                        except json.JSONDecodeError:
+                            continue  # JSON 파싱 실패한 라인은 무시
+                except UnicodeDecodeError:
+                    continue  # 디코딩 실패한 라인은 무시
 
         response_container.markdown(full_response)
         return full_response
+
     except Exception as e:
         st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
-        return ""
+        raise  # 예외를 다시 발생시켜 트레이싱에서 캡처할 수 있도록 함
 
 
 def create_chain(model_name=MODELS["gemma3"]):

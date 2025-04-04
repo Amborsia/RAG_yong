@@ -1,6 +1,6 @@
 import streamlit as st
 
-from services.constants import NOT_FOUND_IN_TEXTBOOK
+from services.constants import CONTENT_NOT_IN_TEXTBOOK, not_found_in
 
 
 def set_active_with_page(question_id: str, book_name: str, page_no: int):
@@ -39,8 +39,8 @@ def render_sidebar():
                     )
                     if question_idx != -1 and question_idx + 1 < len(messages):
                         response = messages[question_idx + 1].content
-                        if "찾을 수 없는 내용이에요" in response:
-                            st.write(NOT_FOUND_IN_TEXTBOOK)
+                        if not_found_in(response):
+                            st.write(CONTENT_NOT_IN_TEXTBOOK)
                         elif results:
                             st.write("📝 참고 페이지")
                             for idx, result in enumerate(results[:3]):

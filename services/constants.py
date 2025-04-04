@@ -1,3 +1,7 @@
 """공통으로 사용되는 상수들을 정의하는 모듈"""
 
-NOT_FOUND_IN_TEXTBOOK = "교재에서 찾을 수 없는 내용이에요."
+CONTENT_NOT_IN_TEXTBOOK = "교재에서 찾을 수 없는 내용이에요."
+
+
+def not_found_in(text: str) -> bool:
+    return "찾을 수 없는 내용이에요" in text or "찾을 수 없어요" in text

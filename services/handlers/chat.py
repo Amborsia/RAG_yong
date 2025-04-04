@@ -2,13 +2,13 @@ import json
 import os
 import uuid
 
-import requests
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_core.messages.chat import ChatMessage
 
-from services.constants import NOT_FOUND_IN_TEXTBOOK
+from services.constants import not_found_in
 from services.ebs import EbsRAG
+from utils.llm.gemma import GemmaLLM, create_user_message
 from utils.prompts import load_prompt
 
 # 환경 변수 로드
@@ -53,30 +53,13 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                 chat_history=chat_history,
             )
 
-        # Gemma3 API 호출
+        # Gemma LLM 인스턴스 생성 및 응답 생성
         with st.chat_message("assistant"):
             response_container = st.empty()
             try:
-                response = requests.post(
-                    f"{GEMMA_URL}/v1/chat/completions",
-                    json={
-                        "model": "chat_model",
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [{"type": "text", "text": formatted_prompt}],
-                            }
-                        ],
-                        "max_tokens": 1000,
-                        "stream": True,
-                    },
-                    headers={
-                        "Authorization": f"Bearer {os.getenv('GEMMA_TOKEN')}",
-                        "Content-Type": "application/json",
-                    },
-                    stream=True,
-                )
-                response.raise_for_status()
+                llm = GemmaLLM.from_env(project_name="ebs-tutor")
+                messages = [create_user_message(formatted_prompt)]
+                response = llm.stream(messages)
 
                 full_response = ""
                 for line in response.iter_lines():
@@ -112,22 +95,27 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                     response_text = full_response
 
                     # 응답에 "찾을 수 없는 내용이에요" 포함 여부 확인
-                    if "찾을 수 없는 내용이에요" in response_text:
+                    if not_found_in(response_text):
                         sources = [{"message": "생성된 답변입니다"}]
                 else:
                     response_text = (
                         "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
                     )
                     sources = []
+
             except Exception as e:
                 st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
                 response_text = "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
+                sources = []
 
+        # 응답 및 소스 저장
         st.session_state["messages"].append(
             ChatMessage(role="assistant", content=response_text)
         )
         st.session_state["sources"][question_id] = sources
-        if sources:  # 소스가 있는 경우에만 페이지 업데이트
+
+        # PDF 뷰어 페이지 업데이트
+        if sources:
             try:
                 first_source = sources[0]
                 if isinstance(first_source, str):
