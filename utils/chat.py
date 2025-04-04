@@ -1,9 +1,9 @@
 import streamlit as st
 from langchain_core.messages.chat import ChatMessage
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI
 
+from utils.custom_logging import gemma_trace
 from utils.prompts import load_prompt
 
 MODELS = {

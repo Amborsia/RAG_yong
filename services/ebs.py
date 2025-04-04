@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 from requests.adapters import HTTPAdapter, Retry
 
-from services.constants import NOT_FOUND_IN_TEXTBOOK
+from services.constants import CONTENT_NOT_IN_TEXTBOOK
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -218,7 +218,7 @@ class EbsRAG:
 
         # 검색 결과가 없는 경우
         if not results:
-            return NOT_FOUND_IN_TEXTBOOK, [], []
+            return CONTENT_NOT_IN_TEXTBOOK, [], []
 
         # 결과 필터링
         filtered_results = self._filter_results(results)
@@ -242,7 +242,11 @@ class EbsRAG:
                 st.session_state["book_names"][question_id] = book_name
 
         return (
-            ("\n\n".join(context_chunks) if context_chunks else NOT_FOUND_IN_TEXTBOOK),
+            (
+                "\n\n".join(context_chunks)
+                if context_chunks
+                else CONTENT_NOT_IN_TEXTBOOK
+            ),
             sources,
             processed_results,
         )

@@ -4,8 +4,9 @@ import streamlit as st
 from langchain_core.messages.chat import ChatMessage
 from langchain_openai import ChatOpenAI
 
-from services.constants import NOT_FOUND_IN_TEXTBOOK
+from services.constants import not_found_in
 from services.ebs import EbsRAG
+from utils.llm.gemma import GemmaLLM, create_user_message
 from utils.prompts import load_prompt
 
 
@@ -56,11 +57,14 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
         if "찾을 수 없는 내용이에요" in response_text:
             sources = [{"message": "생성된 답변입니다"}]
 
+        # 응답 및 소스 저장
         st.session_state["messages"].append(
             ChatMessage(role="assistant", content=response_text)
         )
         st.session_state["sources"][question_id] = sources
-        if sources:  # 소스가 있는 경우에만 페이지 업데이트
+
+        # PDF 뷰어 페이지 업데이트
+        if sources:
             try:
                 first_source = sources[0]
                 if isinstance(first_source, str):
