@@ -1,19 +1,20 @@
 # models/database.py
-import os
 import json
+import os
+
 import faiss
 import numpy as np
 
 # 전역 변수
-index = None            # FAISS 인덱스 (HNSW 등)
-documents = []          # 원본 문서 리스트 (각 JSON 파일의 내용)
-chunked_data = {}       # chunk 정보 저장 (all_chunks, chunk_to_doc_map 등)
+index = None  # FAISS 인덱스 (HNSW 등)
+documents = []  # 원본 문서 리스트 (각 JSON 파일의 내용)
+chunked_data = {}  # chunk 정보 저장 (all_chunks, chunk_to_doc_map 등)
+
 
 def load_data(data_dir):
     """
     data_dir 내 JSON 파일들을 읽어 documents 리스트에 저장.
-    각 JSON 파일은 Document 객체(최소 "text" 필드, 선택적으로 "metadata")를 포함해야 합니다.
-    JSON 파일의 루트가 리스트일 경우 각 객체를, dict일 경우 바로 처리합니다.
+    각 JSON 파일은 {"title": str, "pages": Dict[str, str]} 형식이어야 합니다.
     """
     global documents
     documents.clear()
@@ -22,25 +23,29 @@ def load_data(data_dir):
         if file_name.endswith(".json"):
             file_path = os.path.join(data_dir, file_name)
             try:
-                with open(file_path, 'r', encoding='utf-8') as file:
+                with open(file_path, "r", encoding="utf-8") as file:
                     data = json.load(file)
-                    if isinstance(data, list):
-                        for doc in data:
-                            if isinstance(doc, dict) and "text" in doc:
+                    if isinstance(data, dict) and "title" in data and "pages" in data:
+                        # 각 페이지를 개별 문서로 변환
+                        for page_no, content in data["pages"].items():
+                            if content:  # 빈 페이지는 제외
+                                doc = {
+                                    "text": content,
+                                    "metadata": {
+                                        "title": data["title"],
+                                        "page": page_no,
+                                    },
+                                }
                                 documents.append(doc)
-                            else:
-                                print(f"[Warning] Missing 'text' field in a document in {file_name}.")
-                    elif isinstance(data, dict):
-                        if "text" in data:
-                            documents.append(data)
-                        else:
-                            print(f"[Warning] Missing 'text' field in {file_name}.")
                     else:
-                        print(f"[Warning] Unexpected JSON structure in {file_name}.")
+                        print(
+                            f"[Warning] Invalid JSON structure in {file_name}. Expected 'title' and 'pages' fields."
+                        )
             except Exception as e:
                 print(f"[Error] Failed to load {file_name}: {e}")
 
     print(f"Loaded {len(documents)} documents from '{data_dir}'.")
+
 
 def build_index(embeddings, index_type="HNSW"):
     """
@@ -71,6 +76,7 @@ def build_index(embeddings, index_type="HNSW"):
         index = None
         return None
 
+
 def load_index(file_path, index_type="HNSW"):
     """
     faiss.read_index를 사용하여 인덱스를 로드.
@@ -94,6 +100,7 @@ def load_index(file_path, index_type="HNSW"):
         print(f"[Error] Failed to load index from {file_path}: {e}")
     index = None
     return None
+
 
 def search_embeddings(idx, query_embedding, top_k=5):
     """
