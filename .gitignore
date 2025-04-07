@@ -28,3 +28,6 @@ __pycache__/
 data/ebs/pdfs/
 data/
 cache/
+logs
+
+.cursor/
