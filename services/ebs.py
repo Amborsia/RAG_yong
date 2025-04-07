@@ -208,13 +208,13 @@ class EbsRAG:
             tuple[str, List[str], List[SearchResult]]: (가공된 컨텍스트 텍스트, 소스 리스트, 필터링된 검색 결과)
         """
         # 검색 수행
-        results = self.search(query, top_k=top_k)
+        results = self.search(query, top_k=top_k * 2)  # 더 많은 결과를 가져와서 필터링
 
         # 검색 결과가 없는 경우
         if not results:
             return CONTENT_NOT_IN_TEXTBOOK, [], []
 
-        # 결과 필터링
+        # 결과 필터링 (미니북 우선)
         filtered_results = self._filter_results(results)
 
         # 결과 가공
@@ -222,25 +222,26 @@ class EbsRAG:
         sources = []
         processed_results = []
 
-        for result in filtered_results:
-            r, book_name = result
-            page_no = r.get("page_no")
-            content = r.get("content")
+        for result, book_name in filtered_results:
+            page_no = result.get("page_no")
+            content = result.get("content")
             if page_no and content:
                 context_chunks.append(f"[{page_no}페이지]\n{content}")
                 sources.append(f"{page_no}페이지")
-                processed_results.append(r)  # 필터링된 결과를 저장
+                # 검색 결과 구조 일관성 유지
+                processed_result = {
+                    "page_no": page_no,
+                    "content": content,
+                    "metadata": {"title": book_name},
+                }
+                processed_results.append(processed_result)
 
             # Streamlit 세션 상태 업데이트
             if question_id and "book_names" in st.session_state:
                 st.session_state["book_names"][question_id] = book_name
 
         return (
-            (
-                "\n\n".join(context_chunks)
-                if context_chunks
-                else CONTENT_NOT_IN_TEXTBOOK
-            ),
+            "\n\n".join(context_chunks) if context_chunks else CONTENT_NOT_IN_TEXTBOOK,
             sources,
             processed_results,
         )
