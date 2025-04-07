@@ -33,7 +33,8 @@ def is_greeting(text: str) -> bool:
 
 def filter_conversation(history_msgs):
     """
-    대화 내역에서 인사말, TIP, 예시 질문 등 불필요한 부분을 제거합니다.
+    대화 내역에서 user의 질문만 유지하고 나머지는 모두 제거합니다.
+    system 메시지(교재 내용)는 매 검색마다 새로 가져오므로 저장하지 않습니다.
     """
     filtered = []
     exclusion_keywords = {
@@ -43,9 +44,15 @@ def filter_conversation(history_msgs):
         "예시 질문",
         "더 나은 삶을 위한 스마트도시",
     }
+
     for msg in history_msgs:
-        if not any(msg.content.startswith(keyword) for keyword in exclusion_keywords):
-            filtered.append(msg)
+        # user 메시지만 포함
+        if msg.role == "user":
+            if not any(
+                msg.content.startswith(keyword) for keyword in exclusion_keywords
+            ):
+                filtered.append(msg)
+
     return filtered
 
 
