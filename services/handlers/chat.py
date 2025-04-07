@@ -5,6 +5,7 @@ import uuid
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_core.messages.chat import ChatMessage
+from langchain_openai import ChatOpenAI
 
 from services.constants import CONTENT_NOT_IN_TEXTBOOK
 from services.ebs import EbsRAG
@@ -16,6 +17,16 @@ load_dotenv()
 
 # Gemma3 설정
 GEMMA_URL = os.getenv("GEMMA_URL", "http://localhost:8000")  # 기본값 설정
+llm_type = os.getenv("LLM_TYPE", "openai")
+
+
+def get_llm(streaming: bool = True):
+    if llm_type == "gemma":
+        return GemmaLLM.from_env(project_name="ebs-tutor")
+    elif llm_type == "openai":
+        return ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=streaming)
+    else:
+        raise ValueError(f"Invalid LLM type: {llm_type}")
 
 
 def handle_user_input(user_input: str, ebs_rag: EbsRAG):
@@ -51,38 +62,59 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
             )
 
             # Gemma LLM으로 컨텍스트 체크 (스트리밍 사용)
-            llm = GemmaLLM.from_env(project_name="ebs-tutor")
-            check_messages = [create_user_message(formatted_check_prompt)]
+            llm = get_llm()
+            check_messages = (
+                [create_user_message(formatted_check_prompt)]
+                if llm_type == "gemma"
+                else formatted_check_prompt
+            )
             check_response = llm.stream(check_messages)
 
             # 응답 파싱 (스트리밍 응답 처리)
-            response_text = ""
-            for line in check_response.iter_lines():
-                if line:
-                    try:
-                        line_text = line.decode("utf-8")
-                        if line_text.startswith("data: "):
-                            line_text = line_text[6:]  # 'data: ' 제거
-                            if line_text.strip() == "[DONE]":
-                                break
-                            try:
-                                json_response = json.loads(line_text)
-                                if (
-                                    json_response.get("choices")
-                                    and len(json_response["choices"]) > 0
-                                ):
-                                    delta = json_response["choices"][0].get("delta", {})
-                                    if delta.get("content"):
-                                        response_text += delta["content"]
-                            except json.JSONDecodeError:
-                                continue
-                    except UnicodeDecodeError:
-                        continue
+            if llm_type == "gemma":
+                response_text = ""
+                for line in check_response.iter_lines():
+                    if line:
+                        try:
+                            line_text = line.decode("utf-8")
+                            if line_text.startswith("data: "):
+                                line_text = line_text[6:]  # 'data: ' 제거
+                                if line_text.strip() == "[DONE]":
+                                    break
+                                try:
+                                    json_response = json.loads(line_text)
+                                    if (
+                                        json_response.get("choices")
+                                        and len(json_response["choices"]) > 0
+                                    ):
+                                        delta = json_response["choices"][0].get(
+                                            "delta", {}
+                                        )
+                                        if delta.get("content"):
+                                            response_text += delta["content"]
+                                except json.JSONDecodeError:
+                                    continue
+                        except UnicodeDecodeError:
+                            continue
 
-            # 응답 파싱
-            check_lines = response_text.strip().split("\n", 1)
-            can_answer = check_lines[0].strip() == "Yes"
-            processed_prompt = user_input  # 항상 원래 질문 사용
+                # 응답 파싱
+                check_lines = response_text.strip().split("\n", 1)
+                can_answer = check_lines[0].strip() == "Yes"
+                processed_prompt = user_input  # 항상 원래 질문 사용
+
+            else:
+                check_response = llm.stream(check_messages)
+                response_text = ""
+                for chunk in check_response:
+                    if hasattr(chunk, "content"):
+                        response_text += chunk.content
+                    else:
+                        response_text += str(chunk)
+
+                # 응답 파싱
+                check_lines = response_text.strip().split("\n", 1)
+                can_answer = check_lines[0].strip() == "Yes"
+                processed_prompt = user_input
 
             # can_answer 값을 세션 상태에 저장
             if "can_answer" not in st.session_state:
@@ -117,57 +149,85 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                 )
 
                 # Gemma LLM으로 최종 응답 생성
-                messages = [create_user_message(formatted_tutor_prompt)]
-                response = llm.stream(messages)
-
-                full_response = ""
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            line_text = line.decode("utf-8")
-                            if line_text.startswith("data: "):
-                                line_text = line_text[6:]  # 'data: ' 제거
-                                if line_text.strip() == "[DONE]":
-                                    break  # 스트리밍 완료
-                                try:
-                                    json_response = json.loads(line_text)
-                                    if (
-                                        json_response.get("choices")
-                                        and len(json_response["choices"]) > 0
-                                    ):
-                                        delta = json_response["choices"][0].get(
-                                            "delta", {}
-                                        )
-                                        if delta.get("content"):
-                                            full_response += delta["content"]
-                                            # 답변이 시작되면 컨텍스트 컨테이너를 비움
-                                            if full_response.strip():
-                                                context_container.empty()
-                                            response_container.markdown(
-                                                full_response + "▌"
-                                            )
-                                except json.JSONDecodeError:
-                                    continue  # JSON 파싱 실패한 라인은 무시
-                        except UnicodeDecodeError:
-                            continue  # 디코딩 실패한 라인은 무시
-
-                # 최종 응답 표시
-                if full_response:  # 응답이 있는 경우에만 표시
-                    response_container.markdown(full_response)
-                    response_text = full_response
-                    # 교재에서 답을 찾을 수 없는 경우 안내 메시지만 표시
-                    if not can_answer:
-                        sources = [
-                            {
-                                "message": CONTENT_NOT_IN_TEXTBOOK,
-                            }
-                        ]
+                if llm_type == "gemma":
+                    messages = [create_user_message(formatted_tutor_prompt)]
+                    response = llm.stream(messages)
                 else:
-                    response_text = (
-                        "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
-                    )
-                    sources = []
+                    response = llm.stream(formatted_tutor_prompt)
 
+                # 응답 파싱 (스트리밍 응답 처리)
+                if llm_type == "gemma":
+                    full_response = ""
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                line_text = line.decode("utf-8")
+                                if line_text.startswith("data: "):
+                                    line_text = line_text[6:]  # 'data: ' 제거
+                                    if line_text.strip() == "[DONE]":
+                                        break  # 스트리밍 완료
+                                    try:
+                                        json_response = json.loads(line_text)
+                                        if (
+                                            json_response.get("choices")
+                                            and len(json_response["choices"]) > 0
+                                        ):
+                                            delta = json_response["choices"][0].get(
+                                                "delta", {}
+                                            )
+                                            if delta.get("content"):
+                                                full_response += delta["content"]
+                                                # 답변이 시작되면 컨텍스트 컨테이너를 비움
+                                                if full_response.strip():
+                                                    context_container.empty()
+                                                response_container.markdown(
+                                                    full_response + "▌"
+                                                )
+                                    except json.JSONDecodeError:
+                                        continue  # JSON 파싱 실패한 라인은 무시
+                            except UnicodeDecodeError:
+                                continue  # 디코딩 실패한 라인은 무시
+
+                    # 최종 응답 표시
+                    if full_response:  # 응답이 있는 경우에만 표시
+                        response_container.markdown(full_response)
+                        response_text = full_response
+                        # 교재에서 답을 찾을 수 없는 경우 안내 메시지만 표시
+                        if not can_answer:
+                            sources = [
+                                {
+                                    "message": CONTENT_NOT_IN_TEXTBOOK,
+                                }
+                            ]
+                    else:
+                        response_text = (
+                            "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
+                        )
+                        sources = []
+
+                else:
+                    response_text = ""
+                    for chunk in response:
+                        if hasattr(chunk, "content"):
+                            chunk_text = chunk.content
+                        else:
+                            chunk_text = str(chunk)
+                        response_text += chunk_text
+                        # 답변이 시작되면 컨텍스트 컨테이너를 비움
+                        if response_text.strip():
+                            context_container.empty()
+                        response_container.markdown(response_text + "▌")
+
+                    # 최종 응답 표시
+                    if response_text:
+                        response_container.markdown(response_text)
+                        if not can_answer:
+                            sources = [{"message": CONTENT_NOT_IN_TEXTBOOK}]
+                    else:
+                        response_text = (
+                            "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."
+                        )
+                        sources = []
             except Exception as e:
                 st.error(f"Gemma3 API 호출 중 오류 발생: {str(e)}")
                 response_text = "죄송합니다. 응답을 생성하는 중 오류가 발생했습니다."

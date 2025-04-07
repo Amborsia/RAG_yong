@@ -32,6 +32,7 @@ class AppSettings(BaseSettings):
     texts_dir: str = "data/ebs/texts"
     gemma_url: str
     gemma_token: str
+    llm_type: str = "openai"
 
     # 추가된 환경 변수 필드
     openai_api_key: str
