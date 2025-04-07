@@ -1,5 +1,7 @@
 import json
+import os
 import re
+from pathlib import Path
 
 
 def clean_page_content(content: str) -> str:
@@ -33,6 +35,8 @@ def convert_text_to_json(text_file_path: str, output_file_path: str) -> None:
         text_file_path: 입력 텍스트 파일 경로
         output_file_path: 출력 JSON 파일 경로
     """
+    print(f"Converting {text_file_path} to {output_file_path}")
+
     with open(text_file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -43,7 +47,9 @@ def convert_text_to_json(text_file_path: str, output_file_path: str) -> None:
     if pages[0].strip() == "":
         pages = pages[1:]
 
-    book_data = {"title": "뉴런과학1_미니북", "pages": {}}
+    # 파일 이름에서 확장자를 제외한 부분을 타이틀로 사용
+    title = Path(text_file_path).stem
+    book_data = {"title": title, "pages": {}}
 
     for page in pages:
         if not page.strip():
@@ -60,11 +66,40 @@ def convert_text_to_json(text_file_path: str, output_file_path: str) -> None:
     with open(output_file_path, "w", encoding="utf-8") as f:
         json.dump(book_data, f, ensure_ascii=False, indent=2)
 
+    print(f"Successfully converted {text_file_path}")
+
+
+def process_directory(directory_path: str) -> None:
+    """
+    지정된 디렉토리의 모든 .txt 파일을 .json 파일로 변환합니다.
+
+    Args:
+        directory_path: 처리할 디렉토리 경로
+    """
+    directory = Path(directory_path)
+
+    if not directory.exists():
+        print(f"Directory not found: {directory_path}")
+        return
+
+    # 모든 .txt 파일 찾기
+    txt_files = list(directory.glob("*.txt"))
+
+    if not txt_files:
+        print(f"No .txt files found in {directory_path}")
+        return
+
+    print(f"Found {len(txt_files)} text files to process")
+
+    # 각 텍스트 파일을 JSON으로 변환
+    for txt_file in txt_files:
+        json_file = txt_file.with_suffix(".json")
+        convert_text_to_json(str(txt_file), str(json_file))
+
 
 def main():
-    text_file_path = "data/ebs/texts/뉴런과학1_미니북.txt"
-    output_file_path = "data/ebs/texts/뉴런과학1_미니북.json"
-    convert_text_to_json(text_file_path, output_file_path)
+    directory_path = "data/ebs/texts"
+    process_directory(directory_path)
 
 
 if __name__ == "__main__":

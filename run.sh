@@ -115,6 +115,24 @@ convert_all_pdfs() {
     done
 }
 
+# 텍스트 파일을 JSON으로 변환하는 함수
+convert_texts_to_json() {
+    local text_dir="data/ebs/texts"
+    
+    if [ ! -d "$text_dir" ]; then
+        error "텍스트 디렉토리를 찾을 수 없습니다: $text_dir"
+    fi
+    
+    log "텍스트 파일을 JSON으로 변환 중..."
+    python utils/ebs_json_converter.py
+    
+    if [ $? -eq 0 ]; then
+        log "✅ 텍스트 파일 변환 완료"
+    else
+        error "텍스트 파일 변환 실패"
+    fi
+}
+
 # 인자 처리
 case "$1" in
     start)
@@ -130,11 +148,15 @@ case "$1" in
             convert_pdf_to_images "$2"
         fi
         ;;
+    convert-texts)
+        convert_texts_to_json
+        ;;
     *)
-        echo "Usage: $0 {start|stop|convert [pdf_path]}"
+        echo "Usage: $0 {start|stop|convert [pdf_path]|convert-texts}"
         echo "  start: Streamlit 서버 시작"
         echo "  stop: Streamlit 서버 종료"
         echo "  convert [pdf_path]: PDF를 이미지로 변환 (pdf_path 생략시 모든 PDF 변환)"
+        echo "  convert-texts: 텍스트 파일들을 JSON으로 변환"
         exit 1
         ;;
 esac
