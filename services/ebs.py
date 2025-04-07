@@ -195,21 +195,14 @@ class EbsRAG:
             return {}
 
     def search_with_processed_results(
-        self, query: str, question_id: str, top_k: int = 3
+        self, query: str, question_id: str, top_k: int = 5
     ) -> tuple[str, List[str], List[SearchResult]]:
         """
         검색을 수행하고 가공된 컨텍스트와 소스를 반환합니다.
-
-        Args:
-            query: 검색 쿼리
-            question_id: 질문 ID
-            top_k: 검색할 결과 수
-
-        Returns:
-            tuple[str, List[str], List[SearchResult]]: (가공된 컨텍스트 텍스트, 소스 리스트, 필터링된 검색 결과)
+        top_k를 5로 늘려서 더 많은 결과를 검토합니다.
         """
-        # 검색 수행
-        results = self.search(query, top_k=top_k * 2)  # 더 많은 결과를 가져와서 필터링
+        # 검색 수행 (실제 검색은 10개로 하여 필터링 여유를 둠)
+        results = self.search(query, top_k=10)
 
         # 검색 결과가 없는 경우
         if not results:
@@ -223,7 +216,8 @@ class EbsRAG:
         sources = []
         processed_results = []
 
-        for result, book_name in filtered_results:
+        # top_k개 까지만 사용
+        for result, book_name in filtered_results[:top_k]:
             page_no = result.get("page_no")
             content = result.get("content")
             if page_no and content:
@@ -252,43 +246,55 @@ class EbsRAG:
         filtered_results = []
         minibook_results = []
         other_results = []
+        answer_results = []  # 정답과 해설 결과를 따로 저장
 
-        # 첫 번째 패스: 높은 품질의 결과 필터링
+        # 첫 번째 패스: 결과 분류
         for r in results:
             book_name = r.get("book_name") or r.get("metadata", {}).get("title", "")
             content = r.get("content", "").strip()
+            score = r.get("score", 0)
 
+            # 빈 내용이나 너무 짧은 내용은 제외
+            if len(content) < 10:
+                continue
+
+            # 정답과 해설 분류
+            if "정답과 해설" in book_name:
+                answer_results.append((r, book_name))
+                continue
+
+            # 미니북 분류
             if "미니북" in book_name:
-                if r.get("score", 0) >= 0.5 and len(content) > 30:
+                # 미니북은 점수 기준을 낮춤
+                if score >= 0.3:
                     minibook_results.append((r, book_name))
-                # 낮은 품질의 미니북 결과도 별도 저장
-                elif len(content) > 0:
+                else:
+                    # 낮은 점수의 미니북도 저장
                     if not any(mb[1] == book_name for mb in minibook_results):
                         minibook_results.append((r, book_name))
+            # 기타 결과 분류
             else:
-                if r.get("score", 0) >= 0.5 and len(content) > 30:
+                if score >= 0.5 and len(content) > 30:
                     other_results.append((r, book_name))
 
-        # 미니북 결과가 없는 경우 점수가 낮거나 내용이 짧은 미니북도 포함
-        if not minibook_results:
-            for r in results:
-                book_name = r.get("book_name") or r.get("metadata", {}).get("title", "")
-                if "미니북" in book_name and len(r.get("content", "").strip()) > 0:
-                    minibook_results.append((r, book_name))
-                    break
-
-        # 결과 조합: 미니북을 우선 포함
+        # 결과 조합
+        # 1. 먼저 높은 점수의 미니북 결과 추가
         filtered_results.extend(
             sorted(minibook_results, key=lambda x: x[0].get("score", 0), reverse=True)
         )
 
-        # 남은 슬롯에 다른 결과 추가
-        remaining_slots = 3 - len(filtered_results)
-        if remaining_slots > 0:
+        # 2. 다음으로 높은 점수의 일반 결과 추가
+        filtered_results.extend(
+            sorted(other_results, key=lambda x: x[0].get("score", 0), reverse=True)
+        )
+
+        # 3. 마지막으로, 다른 결과가 충분하지 않은 경우에만 정답과 해설 추가
+        if len(filtered_results) < 3:
+            remaining_slots = 3 - len(filtered_results)
             filtered_results.extend(
-                sorted(other_results, key=lambda x: x[0].get("score", 0), reverse=True)[
-                    :remaining_slots
-                ]
+                sorted(
+                    answer_results, key=lambda x: x[0].get("score", 0), reverse=True
+                )[:remaining_slots]
             )
 
         return filtered_results
