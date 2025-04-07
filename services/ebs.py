@@ -29,7 +29,9 @@ class AppSettings(BaseSettings):
     vs2_url: str
     vs2_model: str
     vs2_collection_name: str
-    texts_dir: str = "data/ebs/chunks"
+    texts_dir: str = "data/ebs/texts"
+    gemma_url: str
+    gemma_token: str
 
     # 추가된 환경 변수 필드
     openai_api_key: str
@@ -91,29 +93,21 @@ class EbsRAG:
 
         try:
             with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return self._process_book_data(book_name, data)
+                return json.load(f)
 
         except FileNotFoundError:
             logger.warning("JSON 파일을 찾을 수 없음: %s", book_name)
-            return {"pages": {}}
+            return {"title": "", "pages": {}}
         except json.JSONDecodeError as e:
-            logger.error("JSON 파싱 오류 (%s): %s", book_name, e)
-            return {"pages": {}}
+            logger.error("JSON 파싱 오류: %s", e)
+            return {"title": "", "pages": {}}
 
-    def _process_book_data(self, book_name: str, data: list) -> Dict[str, Any]:
+    def _process_book_data(
+        self, book_name: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """JSON 데이터 처리 파이프라인"""
-        pages = {}
-        for idx, item in enumerate(data, 1):
-            try:
-                page_no = str(item.get("pageNo", idx))
-                contents = item.get("contents", [])
-                pages[page_no] = contents[0] if contents else ""
-            except (KeyError, IndexError) as e:
-                logger.warning(
-                    "데이터 처리 오류 (%s 페이지 %s): %s", book_name, page_no, e
-                )
-        return {"pages": pages}
+        # 이미 올바른 형식이므로 추가 처리 없이 반환
+        return data
 
     def search(self, query: str, top_k: int = 3) -> List[SearchResult]:
         """개선된 검색 메소드: 타입 힌트 강화 및 에러 처리 개선"""
