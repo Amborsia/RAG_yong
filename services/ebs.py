@@ -206,7 +206,7 @@ class EbsRAG:
         if not results:
             return CONTENT_NOT_IN_TEXTBOOK, [], []
 
-        # 결과 필터링
+        # 결과 필터링 (미니북 우선)
         filtered_results = self._filter_results(results)
 
         # 결과 가공
@@ -215,14 +215,19 @@ class EbsRAG:
         processed_results = []
 
         # top_k개 까지만 사용
-        for result in filtered_results[:top_k]:
-            r, book_name = result
-            page_no = r.get("page_no")
-            content = r.get("content")
+        for result, book_name in filtered_results[:top_k]:
+            page_no = result.get("page_no")
+            content = result.get("content")
             if page_no and content:
                 context_chunks.append(f"[{page_no}페이지]\n{content}")
                 sources.append(f"{page_no}페이지")
-                processed_results.append(r)
+                # 검색 결과 구조 일관성 유지
+                processed_result = {
+                    "page_no": page_no,
+                    "content": content,
+                    "metadata": {"title": book_name},
+                }
+                processed_results.append(processed_result)
 
             # Streamlit 세션 상태 업데이트
             if question_id and "book_names" in st.session_state:
