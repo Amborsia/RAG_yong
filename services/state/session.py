@@ -23,6 +23,7 @@ def init_session_state():
         "pdf_viewer_directories": {},  # 책 이름별 디렉토리
         "book_names": {},  # 질문 ID별 책 이름
         "question_results": {},  # 질문별 검색 결과
+        "can_answer": {},  # 질문별 교재 내용 포함 여부
     }
 
     for key, value in initial_states.items():

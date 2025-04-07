@@ -30,6 +30,7 @@ class AppSettings(BaseSettings):
     vs2_model: str
     vs2_collection_name: str
     texts_dir: str = "data/ebs/texts"
+    llm_type: str = "openai"
 
     # 추가된 환경 변수 필드
     openai_api_key: str
