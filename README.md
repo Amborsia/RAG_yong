@@ -46,7 +46,7 @@ graph LR
     D[사용자 질문] --> E[OpenQueryVS]
     C --> E
     E --> F[사용자 질의 + 컨텍스트]
-    F --> G[LLM<br/>(OpenAI/Gemma3)]
+    F --> G[LLM OpenAI/Gemma3]
     G --> H[답변 생성]
     H --> I[Streamlit UI]
 ```
