@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 
 from services.constants import CONTENT_NOT_IN_TEXTBOOK
 from services.ebs import EbsRAG
+from utils.chat import filter_conversation
 from utils.llm.gemma import GemmaLLM, create_user_message
 from utils.prompts import load_prompt
 
@@ -197,12 +198,12 @@ def handle_user_input(user_input: str, ebs_rag: EbsRAG):
                     "prompts/ebs_tutor.yaml", prompt_name=prompt_name
                 )
 
-                # 채팅 기록 구성
+                # 채팅 기록 필터링 및 구성
+                filtered_messages = filter_conversation(
+                    st.session_state["messages"][-6:-1]
+                )
                 chat_history = "\n".join(
-                    [
-                        f"{msg.role}: {msg.content}"
-                        for msg in st.session_state["messages"][-6:-1]
-                    ]
+                    [f"{msg.role}: {msg.content}" for msg in filtered_messages]
                 )
 
                 # 튜터 응답 프롬프트 포맷
