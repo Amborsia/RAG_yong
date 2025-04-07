@@ -18,6 +18,8 @@ def render_sidebar():
         # 대화 기록이 있는 경우에만 표시
         if len(st.session_state["messages"]) > 1:  # 첫 메시지는 시스템 메시지
             messages = st.session_state["messages"]
+            # 이미 표시된 질문 추적
+            displayed_questions = set()
 
             for i, msg in enumerate(messages):
                 if msg.role == "user":
@@ -27,7 +29,8 @@ def render_sidebar():
                             q_id = id
                             break
 
-                    if q_id:
+                    if q_id and msg.content not in displayed_questions:
+                        displayed_questions.add(msg.content)
                         with st.expander(f"Q: {msg.content}", expanded=True):
                             # 검색 결과 가져오기
                             results = st.session_state["question_results"].get(q_id, [])
@@ -52,8 +55,7 @@ def render_sidebar():
                                         st.button(
                                             f"📖 {book_name} {page_no}p",
                                             key=f"page_btn_{q_id}_{idx}",
-                                            on_click=lambda q_id=q_id, b_name=book_name, p_no=page_no: set_active_with_page(
-                                                q_id, b_name, p_no
-                                            ),
+                                            on_click=set_active_with_page,
+                                            args=(q_id, book_name, page_no),
                                             use_container_width=True,
                                         )
