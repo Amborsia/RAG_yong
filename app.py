@@ -98,6 +98,14 @@ RAG_MODES = {
         "data_dir": "data/yongin_data2",
         "prompt_file": "prompts/yongin_base.yaml",
     },
+    "simple": {
+        "name": "간단 모드",
+        "description": "홈페이지 기반 구정 정보, 주요 행사 등을 간단하게 안내합니다.",
+        "index_file": "faiss_index.bin",
+        "chunked_file": "chunked_data.pkl",
+        "data_dir": "data/yongin_data2",
+        "prompt_file": "prompts/yongin_simple.yaml",
+    },
     "contact": {
         "name": "조직도 모드",
         "description": "조직도 정보를 기반으로 안내합니다.",

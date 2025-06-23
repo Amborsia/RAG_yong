@@ -74,6 +74,7 @@ EVENT_DOC = """\
 # GREETING_MESSAGE 딕셔너리에 새로운 모드 추가 ✅
 GREETING_MESSAGE = {
     "base": textwrap.dedent(BASE),
+    "simple": textwrap.dedent(BASE),
     "contact": textwrap.dedent(CONTACT),
     "article": textwrap.dedent(ARTICLE),
     "research": textwrap.dedent(RESEARCH),
